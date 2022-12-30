@@ -1,0 +1,11 @@
+*.received.txt
+*.sln
+.vs
+.vscode
+.settings
+bin
+obj
+TestResults
+token
+marmolade
+uri

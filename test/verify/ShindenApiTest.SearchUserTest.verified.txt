@@ -1,0 +1,8 @@
+﻿[
+  {
+    Id: 85,
+    Name: Sniku,
+    Rank: Staruszek,
+    AvatarUrl: http://cdn.shinden.eu/cdn1/avatars/225x350/85.jpg?v16
+  }
+]
