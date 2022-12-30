@@ -1,0 +1,9 @@
+﻿[
+  {
+    Id: 2491,
+    Type: Manga,
+    Name: Dorohedoro,
+    Status: Zakończona,
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/173699.jpg
+  }
+]

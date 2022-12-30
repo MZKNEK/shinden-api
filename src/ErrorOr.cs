@@ -12,8 +12,7 @@ public class ErrorOr<TSelf> where TSelf : class
     public bool IsOk() => Error.IsOk();
     public int GetCode() => Error.Code;
     public string GetMessage() => Error.Message;
-
-    public void Deconstruct(out TSelf _self) => _self = Value;
+    public TSelf Get() => Value ?? throw new NullReferenceException(nameof(Value));
 
     public void Deconstruct(out TSelf _self, out Error _error)
     {
