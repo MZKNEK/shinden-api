@@ -1,4 +1,5 @@
 using System;
+using ShindenAPI.Credentials;
 
 namespace ShindenAPI;
 

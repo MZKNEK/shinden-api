@@ -1,4 +1,4 @@
-namespace ShindenAPI;
+namespace ShindenAPI.Credentials;
 
 public class UserAuth : Auth
 {

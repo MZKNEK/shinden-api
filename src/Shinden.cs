@@ -1,5 +1,7 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using ShindenAPI.Credentials;
 using ShindenAPI.Queries;
 
 namespace ShindenAPI;
@@ -12,9 +14,14 @@ public class Shinden
 
     private RequestManager _manager;
 
-    public Shinden(Func<ConfigBuilder, Config> config) : this(config(new ConfigBuilder())) {}
-    public Shinden(Config config) : this(config.Uri, config.Auth) {}
-    public Shinden(Uri uri, Auth auth) => _manager = new(uri, auth);
+    public Shinden(Func<ConfigBuilder, Config> config, ILogger<Shinden> logger = default!)
+        : this(config(new ConfigBuilder()), logger) {}
+
+    public Shinden(Config config, ILogger<Shinden> logger = default!)
+        : this(config.Uri, config.Auth, logger) {}
+
+    public Shinden(Uri uri, Auth auth, ILogger<Shinden> logger = default!)
+         => _manager = new(uri, auth, logger);
 
     public Task<ErrorOr<TReturn>> AskAsync<TReturn>(Request<TReturn> query) where TReturn : class
         => _manager.MakeQueryAsync(query);

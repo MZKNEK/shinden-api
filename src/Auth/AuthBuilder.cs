@@ -1,6 +1,6 @@
 using System;
 
-namespace ShindenAPI;
+namespace ShindenAPI.Credentials;
 
 public class AuthBuilder
 {
@@ -31,6 +31,12 @@ public class AuthBuilder
     public AuthBuilder WithUserAgent(string userAgent)
     {
         _agent = userAgent;
+        return this;
+    }
+
+    public AuthBuilder WithMarmolade(string marmolade)
+    {
+        _marmolade = marmolade;
         return this;
     }
 
