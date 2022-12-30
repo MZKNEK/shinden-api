@@ -65,8 +65,8 @@ internal class RequestManager
             var response = await _client.SendAsync(body).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                Log(LogLevel.Error, "[{method}]: {uri} | {code} | {error}", body.Method, body.RequestUri.LocalPath,
-                    (int)response.StatusCode, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                Log(LogLevel.Error, "[{method}]: {uri} | {code} | {time} ms | {error}", body.Method, body.RequestUri.LocalPath,
+                    (int)response.StatusCode, Stopwatch.GetElapsedTime(startTime).Milliseconds, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
 
                 return await ErrorOr<TReturn>.FromHttpResponseMessage(response).ConfigureAwait(false);
             }
@@ -86,7 +86,7 @@ internal class RequestManager
         }
         catch (Exception ex)
         {
-            Log(LogLevel.Critical, ex, "[{method}]: {uri} | parsing...", body.Method, body.RequestUri.LocalPath);
+            Log(LogLevel.Critical, ex, "[{method}]: {uri} | {msg}", body.Method, body.RequestUri.LocalPath, ex.Message);
             return ErrorOr<TReturn>.FromException(ex);
         }
     }
