@@ -8,8 +8,13 @@ namespace ShindenAPI;
 
 public class Shinden
 {
+    private const string BIG_IMAGE = "genuine";
+    private const string SMALL_IAMGE = "225x350";
+
     private const string SHINDEN_URL = "https://shinden.pl/";
     private const string IMAGE_SERVER_URL = "http://cdn.shinden.eu/";
+
+    private const string USER_TITLE_AVATAR = $"{IMAGE_SERVER_URL}cdn1/other/placeholders/title/225x350.jpg";
     private const string USER_DEFAULT_AVATAR = $"{IMAGE_SERVER_URL}cdn1/other/placeholders/user/100x100.jpg";
 
     private RequestManager _manager;
@@ -34,5 +39,16 @@ public class Shinden
             return USER_DEFAULT_AVATAR;
 
         return $"{IMAGE_SERVER_URL}cdn1/avatars/225x350/{userId}.jpg?v{imageId}";
+    }
+
+    public static string GetPictureUrl(ulong imageId, bool big = true) => GetPictureUrl(imageId.ToString(), big);
+
+    internal static string GetPictureUrl(string imageId, bool big = true)
+    {
+        if (string.IsNullOrEmpty(imageId) || imageId is "0")
+            return USER_TITLE_AVATAR;
+
+        var size = big ? BIG_IMAGE : SMALL_IAMGE;
+        return $"{IMAGE_SERVER_URL}cdn1/images/{size}/{imageId}.jpg";
     }
 }
