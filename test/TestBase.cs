@@ -19,27 +19,13 @@ public class TestBase : VerifyBase
                 typeName: type.Name,
                 methodName: method.Name));
 
-        Console.WriteLine(Directory.GetCurrentDirectory());
-
-        if (File.Exists("../../../uri"))
-            _uri = System.IO.File.ReadAllText("../../../uri");
-        else if (File.Exists("./uri"))
-            _uri = System.IO.File.ReadAllText("./uri");
-
+        _uri = System.IO.File.ReadAllLines("../../../uri").First();
         _uri.Should().NotBeNullOrEmpty();
 
-        if (File.Exists("../../../token"))
-            _token = System.IO.File.ReadAllText("../../../token");
-        else if (File.Exists("./token"))
-            _token = System.IO.File.ReadAllText("./token");
-
+        _token = System.IO.File.ReadAllLines("../../../token").First();
         _token.Should().NotBeNullOrEmpty();
 
-        if (File.Exists("../../../marmolade"))
-            _secret = System.IO.File.ReadAllText("../../../marmolade");
-        else if (File.Exists("./marmolade"))
-            _secret = System.IO.File.ReadAllText("./marmolade");
-
+        _secret = System.IO.File.ReadAllLines("../../../marmolade").First();
         _secret.Should().NotBeNullOrEmpty();
 
         using var loggerFactory = LoggerFactory.Create(builder =>
