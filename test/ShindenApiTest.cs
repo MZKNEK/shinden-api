@@ -10,7 +10,7 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.User("sniku"));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 
     [TestMethod]
@@ -18,7 +18,7 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.Staff("Marina Inoue"));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 
     [TestMethod]
@@ -26,7 +26,7 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.Character("Gintoki"));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 
     [TestMethod]
@@ -34,7 +34,7 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.TitleQuick("Gintama", SearchType.Anime));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 
     [TestMethod]
@@ -42,7 +42,7 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.TitleQuick("Dorohedoro", SearchType.Manga));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 
     [TestMethod]
@@ -50,6 +50,6 @@ public class ShindenApiTest : TestBase
     {
         var result = await _api.AskAsync(new Queries.Search.TitleQuick("Bleach", SearchType.Both));
         result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        await Verify(result.Get().OrderBy(x => x.Id));
     }
 }

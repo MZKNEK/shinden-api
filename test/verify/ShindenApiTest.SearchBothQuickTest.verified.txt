@@ -1,12 +1,5 @@
 ﻿[
   {
-    Id: 60703,
-    Type: One Shot,
-    Name: Bleach: Gokui Meimei-hen,
-    Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/355202.jpg
-  },
-  {
     Id: 16115,
     Type: One Shot,
     Name: Bleach Short Story Edition,
@@ -28,25 +21,11 @@
     PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/205876.jpg
   },
   {
-    Id: 56012,
-    Type: Novel,
-    Name: Bleach 4-Koma: Komaburi 2,
-    Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272266.jpg
-  },
-  {
     Id: 23511,
     Type: One Shot,
     Name: Bleach: Jigoku Hen Special - The Unforgivens,
     Status: Zakończona,
     PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183845.jpg
-  },
-  {
-    Id: 29664,
-    Type: Novel,
-    Name: Bleach: The Death Save the Strawberry,
-    Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183878.jpg
   },
   {
     Id: 29663,
@@ -56,18 +35,11 @@
     PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183846.jpg
   },
   {
-    Id: 55996,
+    Id: 29664,
     Type: Novel,
-    Name: Bleach MASKED: Official Character Book 2,
+    Name: Bleach: The Death Save the Strawberry,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/other/placeholders/title/225x350.jpg
-  },
-  {
-    Id: 56013,
-    Type: Novel,
-    Name: Bleach: We Do Knot Always Love You,
-    Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272287.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183878.jpg
   },
   {
     Id: 55992,
@@ -77,10 +49,38 @@
     PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272174.jpg
   },
   {
+    Id: 55996,
+    Type: Novel,
+    Name: Bleach MASKED: Official Character Book 2,
+    Status: Zakończona,
+    PictureUrl: http://cdn.shinden.eu/cdn1/other/placeholders/title/225x350.jpg
+  },
+  {
     Id: 56011,
     Type: Novel,
     Name: BLEACH Spirits Are Forever With You II,
     Status: Zakończona,
     PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272267.jpg
+  },
+  {
+    Id: 56012,
+    Type: Novel,
+    Name: Bleach 4-Koma: Komaburi 2,
+    Status: Zakończona,
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272266.jpg
+  },
+  {
+    Id: 56013,
+    Type: Novel,
+    Name: Bleach: We Do Knot Always Love You,
+    Status: Zakończona,
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272287.jpg
+  },
+  {
+    Id: 60703,
+    Type: One Shot,
+    Name: Bleach: Gokui Meimei-hen,
+    Status: Zakończona,
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/355202.jpg
   }
 ]
