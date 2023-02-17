@@ -4,83 +4,95 @@
     Type: One Shot,
     Name: Bleach Short Story Edition,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183842.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183842.jpg,
+    TitleUrl: https://shinden.pl/t/16115
   },
   {
     Id: 23203,
     Type: Novel,
     Name: Bleach: Letters From the Other Side,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183843.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183843.jpg,
+    TitleUrl: https://shinden.pl/t/23203
   },
   {
     Id: 23204,
     Type: Novel,
     Name: Bleach: The Honey Dish Rhapsody,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/205876.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/205876.jpg,
+    TitleUrl: https://shinden.pl/t/23204
   },
   {
     Id: 23511,
     Type: One Shot,
     Name: Bleach: Jigoku Hen Special - The Unforgivens,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183845.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183845.jpg,
+    TitleUrl: https://shinden.pl/t/23511
   },
   {
     Id: 29663,
     Type: Novel,
     Name: Bleach: Spirits Are Forever With You,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183846.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183846.jpg,
+    TitleUrl: https://shinden.pl/t/29663
   },
   {
     Id: 29664,
     Type: Novel,
     Name: Bleach: The Death Save the Strawberry,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183878.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/183878.jpg,
+    TitleUrl: https://shinden.pl/t/29664
   },
   {
     Id: 55992,
     Type: Novel,
     Name: SOULS:Bleach Official Character Book,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272174.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272174.jpg,
+    TitleUrl: https://shinden.pl/t/55992
   },
   {
     Id: 55996,
     Type: Novel,
     Name: Bleach MASKED: Official Character Book 2,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/other/placeholders/title/225x350.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/other/placeholders/title/225x350.jpg,
+    TitleUrl: https://shinden.pl/t/55996
   },
   {
     Id: 56011,
     Type: Novel,
     Name: BLEACH Spirits Are Forever With You II,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272267.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272267.jpg,
+    TitleUrl: https://shinden.pl/t/56011
   },
   {
     Id: 56012,
     Type: Novel,
     Name: Bleach 4-Koma: Komaburi 2,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272266.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272266.jpg,
+    TitleUrl: https://shinden.pl/t/56012
   },
   {
     Id: 56013,
     Type: Novel,
     Name: Bleach: We Do Knot Always Love You,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272287.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/272287.jpg,
+    TitleUrl: https://shinden.pl/t/56013
   },
   {
     Id: 60703,
     Type: One Shot,
     Name: Bleach: Gokui Meimei-hen,
     Status: Zakończona,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/355202.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/355202.jpg,
+    TitleUrl: https://shinden.pl/t/60703
   }
 ]

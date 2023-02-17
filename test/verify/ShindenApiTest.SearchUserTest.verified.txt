@@ -3,6 +3,7 @@
     Id: 85,
     Name: Sniku,
     Rank: Staruszek,
-    AvatarUrl: http://cdn.shinden.eu/cdn1/avatars/225x350/85.jpg?v16
+    AvatarUrl: http://cdn.shinden.eu/cdn1/avatars/225x350/85.jpg?v18,
+    ProfileUrl: https://shinden.pl/user/85
   }
 ]

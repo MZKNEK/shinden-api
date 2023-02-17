@@ -4,6 +4,7 @@
     FirstName: Marina,
     LastName: Inoue,
     OtherNames:    Marina   Inoue   Marina   麻里奈   井上  ,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/176530.jpg
+    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/176530.jpg,
+    StaffUrl: https://shinden.pl/staff/156
   }
 ]

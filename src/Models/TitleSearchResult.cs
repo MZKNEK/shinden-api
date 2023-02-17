@@ -21,4 +21,5 @@ public class TitleSearchResult
         get => _url ??= Shinden.GetPictureUrl(_picId);
         init => _picId = value;
     }
+    public string TitleUrl => Shinden.GetTitleUrl(Id);
 }

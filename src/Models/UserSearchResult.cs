@@ -19,4 +19,5 @@ public class UserSearchResult
         get => _url ??= Shinden.GetUserAvatarUrl(_avatarId, Id);
         init => _avatarId = value;
     }
+    public string ProfileUrl => Shinden.GetUserProfileUrl(Id);
 }

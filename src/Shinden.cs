@@ -33,6 +33,14 @@ public class Shinden
 
     public static string GetUserAvatarUrl(ulong userId) => GetUserAvatarUrl(string.Empty, userId);
 
+    public static string GetUserProfileUrl(ulong userId) => $"{SHINDEN_URL}user/{userId}";
+
+    public static string GetTitleUrl(ulong titleId) => $"{SHINDEN_URL}t/{titleId}";
+
+    public static string GetStaffUrl(ulong id) => $"{SHINDEN_URL}staff/{id}";
+
+    public static string GetCharacterUrl(ulong id) => $"{SHINDEN_URL}character/{id}";
+
     internal static string GetUserAvatarUrl(string imageId, ulong userId)
     {
         if (string.IsNullOrEmpty(imageId) || imageId is "0")
