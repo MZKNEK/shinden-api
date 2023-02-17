@@ -61,26 +61,25 @@ internal class RequestManager
 
         try
         {
-            var startTime = Stopwatch.GetTimestamp();
+            StartStopwatch();
             var response = await _client.SendAsync(body).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 Log(LogLevel.Error, "[{method}]: {uri} | {code} | {time} ms | {error}", body.Method, body.RequestUri.LocalPath,
-                    (int)response.StatusCode, Stopwatch.GetElapsedTime(startTime).Milliseconds, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    (int)response.StatusCode, GetElapsedMilliseconds(), await response.Content.ReadAsStringAsync().ConfigureAwait(false));
 
                 return await ErrorOr<TReturn>.FromHttpResponseMessage(response).ConfigureAwait(false);
             }
 
             Log(LogLevel.Information, "[{method}]: {uri} | {code} | {time} ms", body.Method, body.RequestUri.LocalPath,
-                (int)response.StatusCode, Stopwatch.GetElapsedTime(startTime).Milliseconds);
+                (int)response.StatusCode, GetElapsedMilliseconds());
 
             Log(LogLevel.Trace, "[{method}]: {uri} | parsing...", body.Method, body.RequestUri.LocalPath);
 
-            startTime = Stopwatch.GetTimestamp();
+            StartStopwatch();
             var obj = request.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
 
-            Log(LogLevel.Trace, "[{method}]: {uri} | parsed | {time} ms", body.Method, body.RequestUri.LocalPath,
-                Stopwatch.GetElapsedTime(startTime).Milliseconds);
+            Log(LogLevel.Trace, "[{method}]: {uri} | parsed | {time} ms", body.Method, body.RequestUri.LocalPath, GetElapsedMilliseconds());
 
             return ErrorOr<TReturn>.From(obj);
         }
@@ -89,6 +88,24 @@ internal class RequestManager
             Log(LogLevel.Critical, ex, "[{method}]: {uri} | {msg}", body.Method, body.RequestUri.LocalPath, ex.Message);
             return ErrorOr<TReturn>.FromException(ex);
         }
+    }
+
+    private void StartStopwatch()
+    {
+#if NET7_0_OR_GREATER
+        _startTime = Stopwatch.GetTimestamp();
+#else
+        _stopWatch = Stopwatch.StartNew();
+#endif
+    }
+
+    private long GetElapsedMilliseconds()
+    {
+#if NET7_0_OR_GREATER
+        return Stopwatch.GetElapsedTime(_startTime).Milliseconds;
+#else
+        return _stopWatch.ElapsedMilliseconds;
+#endif
     }
 
     private void Log(LogLevel level, Exception ex, string message, params object[] args)
@@ -129,4 +146,10 @@ internal class RequestManager
         _cookies.Add(_baseUri, new Cookie() { Name = "name", Value = _session.Name, Expires = _session.Expires });
         _cookies.Add(_baseUri, new Cookie() { Name = "id", Value = _session.Id, Expires = _session.Expires });
     }
+
+#if NET7_0_OR_GREATER
+    private long _startTime = 0;
+#else
+    private Stopwatch _stopWatch = Stopwatch.StartNew();
+#endif
 }

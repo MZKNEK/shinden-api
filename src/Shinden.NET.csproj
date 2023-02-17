@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net7.0;net6.0</TargetFrameworks>
+    <TargetFrameworks>net7.0;net6.0;netstandard2.0</TargetFrameworks>
+    <LangVersion>11.0</LangVersion>
     <Version>0.4.0-beta</Version>
     <Authors>Sniku</Authors>
-    <Copyright>Copyright 2022 © Sniku. All rights reserved.</Copyright>
+    <Copyright>Copyright 2023 © Sniku. All rights reserved.</Copyright>
     <PackageTags>shinden rest api .net shinden.pl wrapper</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Description>An official asynchronous .NET API Wrapper for the Shinden APIs.</Description>
@@ -17,6 +18,10 @@
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
+    <PackageReference Include="PolySharp" Version="1.12.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>
