@@ -12,14 +12,14 @@ public class Error
     public bool IsOk() => Code > 199 && Code < 300;
 
     internal static Error FromException(Exception ex) => new()
-        {
-            Message = ex.Message,
-            Code = 500
-        };
+    {
+        Message = ex.Message,
+        Code = 500
+    };
 
     internal static async Task<Error> FromHttpResponseMessage(HttpResponseMessage message) => new()
-        {
-            Code = (int)message.StatusCode,
-            Message = await message.Content.ReadAsStringAsync()
-        };
+    {
+        Code = (int)message.StatusCode,
+        Message = await message.Content.ReadAsStringAsync()
+    };
 }

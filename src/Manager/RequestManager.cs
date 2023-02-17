@@ -18,7 +18,7 @@ internal class RequestManager
     private readonly HttpClientHandler _handler;
 
     private UserSession _session;
-    private Queries.Request<object> _userLoginReq;
+    private Queries.LoginUser _userLoginReq;
 
     internal RequestManager(Uri baseUri, Credentials.Auth auth, ILogger<Shinden> logger = default!)
     {
@@ -44,8 +44,16 @@ internal class RequestManager
 
         if (_auth is Credentials.UserAuth uAuth)
         {
-            //TODO: create _userLoginReq request
+            _userLoginReq = new Queries.LoginUser(uAuth);
         }
+    }
+
+    internal bool IsValidUserSession()
+    {
+        if (_userLoginReq is null)
+            return false;
+
+        return _session is not null && _session.IsValid();
     }
 
     internal async Task<ErrorOr<TReturn>> MakeQueryAsync<TReturn>(Queries.Request<TReturn> request, bool skipSession = false)
@@ -58,6 +66,16 @@ internal class RequestManager
 
         var body = request.Build(_baseUri, _auth.Token);
         Log(LogLevel.Trace, "[{method}]: {uri} | starting...", body.Method, body.RequestUri.LocalPath);
+
+        if (request.RequireHttps() && body.RequestUri.Scheme != Uri.UriSchemeHttps)
+        {
+            var builder = new UriBuilder(body.RequestUri)
+            {
+                Scheme = Uri.UriSchemeHttps,
+                Port = -1
+            };
+            body.RequestUri = builder.Uri;
+        }
 
         try
         {
@@ -123,8 +141,14 @@ internal class RequestManager
     private async Task LoginAsUser()
     {
         var res = await MakeQueryAsync(_userLoginReq, true).ConfigureAwait(false);
-        //TODO: create session from response
-        AddSessionCookies();
+        if (res.IsOk())
+        {
+            var val = res.Get();
+            _session = new UserSession(val.Session.Id, val.Session.Name, val.Hash);
+            _cookies.Add(_baseUri, new Cookie() { Name = "name", Value = _session.Name, Expires = _session.Expires });
+            _cookies.Add(_baseUri, new Cookie() { Name = "id", Value = _session.Id, Expires = _session.Expires });
+            Log(LogLevel.Information, "Logged in as {user} | {id}", val.User.Name, val.User.Id);
+        }
     }
 
     private async Task CheckSession()
@@ -136,15 +160,6 @@ internal class RequestManager
         {
             await LoginAsUser().ConfigureAwait(false);
         }
-    }
-
-    private void AddSessionCookies()
-    {
-        if (_session is null || !_session.IsValid())
-            return;
-
-        _cookies.Add(_baseUri, new Cookie() { Name = "name", Value = _session.Name, Expires = _session.Expires });
-        _cookies.Add(_baseUri, new Cookie() { Name = "id", Value = _session.Id, Expires = _session.Expires });
     }
 
 #if NET7_0_OR_GREATER

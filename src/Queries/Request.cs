@@ -8,6 +8,8 @@ namespace ShindenAPI.Queries
     {
         internal abstract HttpRequestMessage Build(Uri uri, string token);
 
+        internal virtual bool RequireHttps() => false;
+
         internal virtual TReturn Parse(string response)
             => JsonConvert.DeserializeObject<TReturn>(response);
     }
