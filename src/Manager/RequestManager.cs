@@ -18,7 +18,7 @@ internal class RequestManager
     private readonly HttpClientHandler _handler;
 
     private UserSession _session;
-    private Queries.LoginUser _userLoginReq;
+    private Queries.User.Login _userLoginReq;
 
     internal RequestManager(Uri baseUri, Credentials.Auth auth, ILogger<Shinden> logger = default!)
     {
@@ -44,7 +44,7 @@ internal class RequestManager
 
         if (_auth is Credentials.UserAuth uAuth)
         {
-            _userLoginReq = new Queries.LoginUser(uAuth);
+            _userLoginReq = new Queries.User.Login(uAuth);
         }
     }
 

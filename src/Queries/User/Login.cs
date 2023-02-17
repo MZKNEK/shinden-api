@@ -4,13 +4,13 @@ using System.Text;
 using ShindenAPI.Credentials;
 using ShindenAPI.Models;
 
-namespace ShindenAPI.Queries;
+namespace ShindenAPI.Queries.User;
 
-public class LoginUser : Request<LogginResult>
+internal class Login : Request<LogginResult>
 {
     private readonly UserAuth _auth;
 
-    internal LoginUser(UserAuth auth) => _auth = auth;
+    internal Login(UserAuth auth) => _auth = auth;
 
     internal override HttpRequestMessage Build(Uri uri, string token) => new()
     {
