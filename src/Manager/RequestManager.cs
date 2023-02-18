@@ -56,6 +56,12 @@ internal class RequestManager
         return _session is not null && _session.IsValid();
     }
 
+    internal async Task<Models.UserSearchResult> ForceLoginAync()
+    {
+        await CheckSession().ConfigureAwait(false);
+        return _session.User;
+    }
+
     internal async Task<ErrorOr<TReturn>> MakeQueryAsync<TReturn>(Queries.Request<TReturn> request, bool skipSession = false)
         where TReturn : class
     {
@@ -144,7 +150,7 @@ internal class RequestManager
         if (res.IsOk())
         {
             var val = res.Get();
-            _session = new UserSession(val.Session.Id, val.Session.Name, val.Hash);
+            _session = new UserSession(val.Session.Id, val.Session.Name, val.Hash, val.User);
             _cookies.Add(_baseUri, new Cookie() { Name = "name", Value = _session.Name, Expires = _session.Expires });
             _cookies.Add(_baseUri, new Cookie() { Name = "id", Value = _session.Id, Expires = _session.Expires });
             Log(LogLevel.Information, "Logged in as {user} | {id}", val.User.Name, val.User.Id);

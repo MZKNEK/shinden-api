@@ -31,6 +31,8 @@ public class Shinden
     public Task<ErrorOr<TReturn>> AskAsync<TReturn>(Request<TReturn> query) where TReturn : class
         => _manager.MakeQueryAsync(query);
 
+    public Task<Models.UserSearchResult> LoginAsUserAsync() => _manager.ForceLoginAync();
+
     public bool IsValidUserSession() => _manager.IsValidUserSession();
 
     public static string GetUserAvatarUrl(ulong userId) => GetUserAvatarUrl(string.Empty, userId);
