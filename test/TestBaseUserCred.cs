@@ -16,7 +16,7 @@ public class TestBaseUserCred : TestBase
                 .AddSimpleConsole();
         });
 
-        _api = new Shinden(x => x.WithUri(_uri)
+        _api = new Shinden(x => x.WithUri(new Uri(_uri))
             .WithAuth(x => x.WithToken(_token)
                 .WithPassword(_token)
                 .WithUsername("tsanapi")

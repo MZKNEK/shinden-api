@@ -15,11 +15,19 @@ public class ShindenApiUserTest : TestBaseUserCred
     public async Task AddToFavsTest()
     {
         var user = await _api.LoginAsUserAsync();
-        var result = await _api.AskAsync(new Queries.User.FavouriteAdd(x =>
+        var resultTile = await _api.AskAsync(new Queries.User.FavouriteAdd(x =>
             x.WithTitleId(1).WithUserId(user.Id).Build()));
+        resultTile.IsOk().Should().BeTrue();
 
-        result.IsOk().Should().BeTrue();
-        await Verify(result.Get());
+        var resultStaff = await _api.AskAsync(new Queries.User.FavouriteAdd(x =>
+            x.WithStaffId(1).WithUserId(user.Id).Build()));
+        resultStaff.IsOk().Should().BeTrue();
+
+        var resultCharacter = await _api.AskAsync(new Queries.User.FavouriteAdd(x =>
+            x.WithCharacterId(1).WithUserId(user.Id).Build()));
+        resultCharacter.IsOk().Should().BeTrue();
+
+        await Verify((resultTile.Get(), resultStaff.Get(), resultCharacter.Get()));
     }
 
     [TestMethod]
