@@ -1,11 +1,13 @@
+using System;
 using Newtonsoft.Json;
 
 namespace ShindenAPI.Models;
 
-public class UserSearchResult
+public class UserSearchResult : IShindenUrlAware
 {
     private string _avatarId { get; init; }
     private string _url { get; set; }
+    private ShindenUrlResolver _urlResolver = ShindenUrlResolver.Default;
 
     [JsonProperty("user_id")]
     public ulong Id { get; init; }
@@ -16,8 +18,14 @@ public class UserSearchResult
     [JsonProperty("avatar")]
     public string AvatarUrl
     {
-        get => _url ??= Shinden.GetUserAvatarUrl(_avatarId, Id);
+        get => _url ??= _urlResolver.GetUserAvatarUrl(_avatarId, Id);
         init => _avatarId = value;
     }
-    public string ProfileUrl => Shinden.GetUserProfileUrl(Id);
+    public string ProfileUrl => _urlResolver.GetUserProfileUrl(Id);
+
+    public void UseResolver(ShindenUrlResolver resolver)
+    {
+        _urlResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+        _url = null;
+    }
 }

@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace ShindenAPI.Models;
 
-public class LogginResult
+public class LoginResult
 {
     [JsonProperty("logged_user")]
     public UserSearchResult User { get; init; }

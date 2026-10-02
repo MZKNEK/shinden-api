@@ -19,14 +19,9 @@ public class TestBase : VerifyBase
                 typeName: type.Name,
                 methodName: method.Name));
 
-        _uri = System.IO.File.ReadAllLines("../../../uri").First();
-        _uri.Should().NotBeNullOrEmpty();
-
-        _token = System.IO.File.ReadAllLines("../../../token").First();
-        _token.Should().NotBeNullOrEmpty();
-
-        _secret = System.IO.File.ReadAllLines("../../../marmolade").First();
-        _secret.Should().NotBeNullOrEmpty();
+        _uri = "http://fake.shinden.test/api";
+        _token = "test-token";
+        _secret = "test-marmolade";
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -41,6 +36,7 @@ public class TestBase : VerifyBase
             .WithAuth(x => x.WithToken(_token)
                 .WithUserAgent("PTestShinden")
                 .WithMarmolade(_secret).Build()).Build(),
-            loggerFactory.CreateLogger<Shinden>());
+            loggerFactory.CreateLogger<Shinden>(),
+            handler: new FakeApiHandler());
     }
 }

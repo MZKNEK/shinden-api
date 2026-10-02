@@ -8,13 +8,13 @@ public class ShindenApiUserTest : TestBaseUserCred
     {
         var result = await _api.AskAsync(new Queries.Search.User("tsanapi"));
         result.IsOk().Should().BeTrue();
-        _api.IsValidUserSession().Should().BeTrue();
+        _api.Users.IsValidSession().Should().BeTrue();
     }
 
     [TestMethod]
     public async Task AddToFavsTest()
     {
-        var user = await _api.LoginAsUserAsync();
+        var user = await _api.Users.LoginAsync();
         var resultTile = await _api.AskAsync(new Queries.User.FavouriteAdd(x =>
             x.WithTitleId(1).WithUserId(user.Id).Build()));
         resultTile.IsOk().Should().BeTrue();
@@ -33,7 +33,7 @@ public class ShindenApiUserTest : TestBaseUserCred
     [TestMethod]
     public async Task RemoveFromFavsTest()
     {
-        var user = await _api.LoginAsUserAsync();
+        var user = await _api.Users.LoginAsync();
         var result = await _api.AskAsync(new Queries.User.FavouriteRemove(x =>
             x.WithTitleId(1).WithUserId(user.Id).Build()));
 

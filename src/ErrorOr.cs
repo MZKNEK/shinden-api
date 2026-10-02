@@ -1,18 +1,71 @@
 using System;
+using System.Net;
 using System.Net.Http;
-using System.Threading.Tasks;
 
 namespace ShindenAPI;
 
-public class ErrorOr<TSelf> where TSelf : class
+/// <summary>
+/// A lightweight, allocation-free result type carrying either a successful value or an
+/// <see cref="Error"/>. Implemented as a <see langword="readonly struct"/> to avoid a heap
+/// allocation on every request.
+/// </summary>
+public readonly struct ErrorOr<TSelf> where TSelf : class
 {
-    public TSelf Value { get; init; } = default!;
-    public Error Error { get; init; } = new Error();
+    private ErrorOr(TSelf value, Error error)
+    {
+        Value = value;
+        Error = error;
+    }
 
-    public bool IsOk() => Error.IsOk();
-    public int GetCode() => Error.Code;
-    public string GetMessage() => Error.Message;
-    public TSelf Get() => Value ?? throw new NullReferenceException(nameof(Value));
+    public TSelf Value { get; }
+    public Error Error { get; }
+
+    public bool IsOk() => Value is not null && Error is not null && Error.IsOk();
+    public bool IsError() => !IsOk();
+    public int GetCode() => Error?.Code ?? 500;
+    public string GetMessage() => Error?.Message ?? string.Empty;
+
+    public TResult Match<TResult>(Func<TSelf, TResult> onSuccess, Func<Error, TResult> onError)
+    {
+        if (onSuccess is null)
+            throw new ArgumentNullException(nameof(onSuccess));
+        if (onError is null)
+            throw new ArgumentNullException(nameof(onError));
+
+        return IsOk() ? onSuccess(Value) : onError(Error);
+    }
+
+    public TSelf Get()
+    {
+        if (!IsOk())
+            throw new InvalidOperationException($"The operation failed with code {GetCode()}: {GetMessage()}");
+
+        return Value;
+    }
+
+    public bool TryGet(out TSelf value)
+    {
+        if (IsOk())
+        {
+            value = Value;
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
+    public bool TryGetError(out Error error)
+    {
+        if (IsError())
+        {
+            error = Error;
+            return true;
+        }
+
+        error = default!;
+        return false;
+    }
 
     public void Deconstruct(out TSelf _self, out Error _error)
     {
@@ -20,10 +73,30 @@ public class ErrorOr<TSelf> where TSelf : class
         _error = Error;
     }
 
-    internal static ErrorOr<TNew> From<TNew>(TNew obj) where TNew : class => new() { Value = obj };
+    internal static ErrorOr<TNew> From<TNew>(TNew obj) where TNew : class
+        => obj is null
+            ? throw new ArgumentNullException(nameof(obj))
+            : ErrorOr<TNew>.Success(obj);
 
-    internal static ErrorOr<TSelf> FromException(Exception ex) => new() { Error = Error.FromException(ex) };
+    internal static ErrorOr<TSelf> FromError(Error error)
+        => error is null
+            ? throw new ArgumentNullException(nameof(error))
+            : Failure(error);
 
-    internal static async Task<ErrorOr<TSelf>> FromHttpResponseMessage(HttpResponseMessage message) => new()
-        { Error = await Error.FromHttpResponseMessage(message) };
+    internal static ErrorOr<TSelf> FromException(
+        Exception ex, ErrorType type = ErrorType.Exception, int code = 500)
+        => Failure(Error.FromException(ex, type, code));
+
+    internal static ErrorOr<TSelf> FromHttpResponse(HttpStatusCode statusCode, string content)
+        => Failure(Error.FromHttpResponse(statusCode, content));
+
+    public static ErrorOr<TSelf> Success(TSelf value)
+        => value is null
+            ? throw new ArgumentNullException(nameof(value))
+            : new ErrorOr<TSelf>(value, new Error());
+
+    public static ErrorOr<TSelf> Failure(Error error)
+        => error is null
+            ? throw new ArgumentNullException(nameof(error))
+            : new ErrorOr<TSelf>(default!, error);
 }

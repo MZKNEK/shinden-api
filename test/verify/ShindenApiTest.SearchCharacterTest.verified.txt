@@ -3,8 +3,8 @@
     Id: 663,
     FirstName: Gintoki,
     LastName: Sakata,
-    OtherNames:    Gintoki   Sakata   Gintoki   Gin-chan   Mr. Odd Jobs   Shiroyasha   Yorozuya  ,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/274727.jpg,
-    CharacterUrl: https://shinden.pl/character/663
+    OtherNames: Gintoki Sakata,
+    PictureUrl: https://cdn.shinden.eu/cdn1/images/genuine/274727.jpg,
+    CharacterUrl: http://fake.shinden.test/character/663
   }
 ]

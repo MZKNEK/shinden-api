@@ -1,25 +1,49 @@
 using System;
+using System.Net;
 using System.Net.Http;
-using System.Threading.Tasks;
 
 namespace ShindenAPI;
 
+public enum ErrorType
+{
+    None,
+    Http,
+    Exception,
+    Parsing,
+    Timeout,
+    Authentication,
+    Configuration
+}
+
 public class Error
 {
-    public int Code { get; init; } = 200;
-    public string Message { get; init; } = default;
+    private const int MinSuccessCode = 200;
+    private const int MaxSuccessCode = 299;
 
-    public bool IsOk() => Code > 199 && Code < 300;
+    public ErrorType Type { get; init; } = ErrorType.None;
+    public int Code { get; init; } = MinSuccessCode;
+    public string Message { get; init; } = string.Empty;
 
-    internal static Error FromException(Exception ex) => new()
+    public bool IsOk() => Type is ErrorType.None && Code >= MinSuccessCode && Code <= MaxSuccessCode;
+
+    internal static Error FromException(Exception ex, ErrorType type = ErrorType.Exception, int code = 500) => new()
     {
         Message = ex.Message,
-        Code = 500
+        Code = code,
+        Type = type
     };
 
-    internal static async Task<Error> FromHttpResponseMessage(HttpResponseMessage message) => new()
+    internal static Error FromMessage(ErrorType type, int code, string message) => new()
     {
-        Code = (int)message.StatusCode,
-        Message = await message.Content.ReadAsStringAsync()
+        Message = message,
+        Code = code,
+        Type = type
+    };
+
+    internal static Error FromHttpResponse(HttpStatusCode statusCode, string content) => new()
+    {
+        Code = (int)statusCode,
+        Message = content,
+        Type = ErrorType.Http
     };
 }

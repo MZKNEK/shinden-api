@@ -3,8 +3,8 @@
     Id: 156,
     FirstName: Marina,
     LastName: Inoue,
-    OtherNames:    Marina   Inoue   Marina   麻里奈   井上  ,
-    PictureUrl: http://cdn.shinden.eu/cdn1/images/genuine/176530.jpg,
-    StaffUrl: https://shinden.pl/staff/156
+    OtherNames: Marina Inoue,
+    PictureUrl: https://cdn.shinden.eu/cdn1/images/genuine/176530.jpg,
+    StaffUrl: http://fake.shinden.test/staff/156
   }
 ]

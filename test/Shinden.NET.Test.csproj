@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>11.0</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DebugType>Full</DebugType>
@@ -9,7 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.2" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.0.0" />
     <PackageReference Include="MSTest.TestFramework" Version="3.0.0" />
@@ -21,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\Shinden.NET.csproj" />
+    <ProjectReference Include="..\src\DependencyInjection\Shinden.NET.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>

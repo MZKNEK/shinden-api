@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.Search;
@@ -11,12 +12,24 @@ public class TitleQuick : Search<TitleSearchResult>
         Both
     }
 
-    public TitleQuick(string name, SearchType type) : base("title", name + TypeToString(type)) {}
+    public TitleQuick(string name, SearchType type) : base("title", name, TypeToParameters(type)) {}
 
-    private static string TypeToString(SearchType type) => type switch
+    private static KeyValuePair<string, string>[] TypeToParameters(SearchType type) => type switch
     {
-        SearchType.Anime => "&accepted_types=Anime&decode=1",
-        SearchType.Manga => "&accepted_types=Manga%3BManhua%3BNovel%3BDoujin%3BManhwa%3BOEL%3BOne+Shot&decode=1",
-        _ => "&accepted_types=Anime%3Manga%3BManhua%3BNovel%3BDoujin%3BManhwa%3BOEL%3BOne+Shot&decode=1"
+        SearchType.Anime => new[]
+        {
+            new KeyValuePair<string, string>("accepted_types", "Anime"),
+            new KeyValuePair<string, string>("decode", "1")
+        },
+        SearchType.Manga => new[]
+        {
+            new KeyValuePair<string, string>("accepted_types", "Manga;Manhua;Novel;Doujin;Manhwa;OEL;One Shot"),
+            new KeyValuePair<string, string>("decode", "1")
+        },
+        _ => new[]
+        {
+            new KeyValuePair<string, string>("accepted_types", "Anime;Manga;Manhua;Novel;Doujin;Manhwa;OEL;One Shot"),
+            new KeyValuePair<string, string>("decode", "1")
+        }
     };
 }

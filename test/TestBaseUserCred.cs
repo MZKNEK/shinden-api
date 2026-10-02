@@ -22,6 +22,7 @@ public class TestBaseUserCred : TestBase
                 .WithUsername("tsanapi")
                 .WithUserAgent("PTestShinden")
                 .WithMarmolade(_secret).Build()).Build(),
-            loggerFactory.CreateLogger<Shinden>());
+            loggerFactory.CreateLogger<Shinden>(),
+            handler: new FakeApiHandler());
     }
 }

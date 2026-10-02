@@ -42,10 +42,17 @@ public class AuthBuilder
 
     public Auth Build()
     {
-        _ = _token ?? throw new ArgumentNullException(nameof(_token));
-        _ = _agent ?? throw new ArgumentNullException(nameof(_agent));
+        if (string.IsNullOrWhiteSpace(_token))
+            throw new ArgumentException("The API token is required.", nameof(_token));
+        if (string.IsNullOrWhiteSpace(_agent))
+            throw new ArgumentException("The user agent is required.", nameof(_agent));
 
-        if (!string.IsNullOrEmpty(_username) && !string.IsNullOrEmpty(_password))
+        var hasUsername = !string.IsNullOrWhiteSpace(_username);
+        var hasPassword = !string.IsNullOrWhiteSpace(_password);
+        if (hasUsername != hasPassword)
+            throw new ArgumentException("Both username and password are required for user authentication.");
+
+        if (hasUsername)
             return new UserAuth
             {
                 Marmolade = _marmolade ?? default!,

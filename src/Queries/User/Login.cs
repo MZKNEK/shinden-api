@@ -1,12 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
-using System.Text;
 using ShindenAPI.Credentials;
 using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.User;
 
-internal class Login : Request<LogginResult>
+internal class Login : Request<LoginResult>
 {
     private readonly UserAuth _auth;
 
@@ -14,14 +14,17 @@ internal class Login : Request<LogginResult>
 
     internal override HttpRequestMessage Build(Uri uri, string token) => new()
     {
-        RequestUri = new Uri(uri, "api/user/login?api_key=" + token),
+        RequestUri = RequestUri.Create(uri, "api/user/login",
+            RequestUri.Parameter("api_key", token)),
         Method = HttpMethod.Post,
         Content = BuildContent()
     };
 
     internal override bool RequireHttps() => true;
 
-    private HttpContent BuildContent() => new StringContent(
-        $"username={_auth.Nickname}&password={_auth.Password}",
-        Encoding.UTF8, "application/x-www-form-urlencoded");
+    private HttpContent BuildContent() => new FormUrlEncodedContent(new[]
+    {
+        new KeyValuePair<string, string>("username", _auth.Nickname),
+        new KeyValuePair<string, string>("password", _auth.Password)
+    });
 }

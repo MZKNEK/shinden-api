@@ -5,23 +5,27 @@ namespace ShindenAPI;
 
 internal class UserSession
 {
-    internal UserSession(string Id, string Name, string Hash, UserSearchResult User)
+    private readonly TimeSpan _lifetime;
+
+    internal UserSession(string id, string name, string hash, UserSearchResult user,
+        DateTimeOffset created, TimeSpan lifetime)
     {
-        this.Id = Id;
-        this.Name = Name;
-        this.Hash = Hash;
-        this.User = User;
-        Created = DateTime.Now;
+        Id = id;
+        Name = name;
+        Hash = hash;
+        User = user;
+        Created = created;
+        _lifetime = lifetime;
     }
 
-    private DateTime Created { get; set; }
+    private DateTimeOffset Created { get; }
 
-    internal string Id { get; private set; }
-    internal string Name { get; private set; }
-    internal string Hash { get; private set; }
-    internal DateTime Expires => Created.AddMinutes(90);
+    internal string Id { get; }
+    internal string Name { get; }
+    internal string Hash { get; }
+    internal DateTime Expires => Created.Add(_lifetime).UtcDateTime;
 
-    internal UserSearchResult User { get; private set; }
+    internal UserSearchResult User { get; }
 
-    internal bool IsValid() => (DateTime.Now - Created).Minutes < 90;
+    internal bool IsValid(DateTimeOffset now) => now - Created < _lifetime;
 }
