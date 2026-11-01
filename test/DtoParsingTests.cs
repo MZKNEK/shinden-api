@@ -166,6 +166,18 @@ public class DtoParsingTests
     }
 
     [TestMethod]
+    public void ReadHistoryAcceptsFractionalChapterNumbers()
+    {
+        var rows = JsonConvert.DeserializeObject<List<LastRead>>("""
+        [{"chapter_id":"822368","title_id":"60316","view_cnt":"1","chapter_no":"23","volume_no":"6"},
+         {"chapter_id":"822308","title_id":"70144","view_cnt":"1","chapter_no":"19.1","volume_no":null},
+         {"chapter_id":"341986","title_id":"1971","view_cnt":"1","chapter_no":"64.5","volume_no":"12"}]
+        """)!;
+        rows.Select(r => r.ChapterNumber).Should().Equal(23m, 19.1m, 64.5m);
+        rows[1].VolumeNumber.Should().BeNull();
+    }
+
+    [TestMethod]
     public void V1SearchPreservesHiddenCoversAndServerUrls()
     {
         var title = JsonConvert.DeserializeObject<TitleSearchResult>("""

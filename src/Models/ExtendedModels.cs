@@ -92,7 +92,8 @@ public class LastRead : PhpRow
     [JsonProperty("view_cnt")] public long? ViewCount { get; init; }
     [JsonProperty("title_id")] public ulong TitleId { get; init; }
     [JsonProperty("chapter_id")] public ulong? ChapterId { get; init; }
-    [JsonProperty("chapter_no")] public long? ChapterNumber { get; init; }
+    // Split chapters are numbered like "19.1" or "64.5".
+    [JsonProperty("chapter_no")] public decimal? ChapterNumber { get; init; }
     [JsonProperty("volume_no")] public long? VolumeNumber { get; init; }
     [JsonProperty("title")] public string Title { get; init; }
     [JsonProperty("created_time")] public string CreatedTime { get; init; }
