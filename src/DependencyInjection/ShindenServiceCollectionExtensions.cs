@@ -28,6 +28,7 @@ public static class ShindenServiceCollectionExtensions
         {
             // PHP session cookies are attached explicitly only to PHP requests.
             UseCookies = false,
+            // Redirects are followed by the client, which keeps credentials on the original site.
             AllowAutoRedirect = false,
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
         });

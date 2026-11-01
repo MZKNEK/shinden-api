@@ -11,4 +11,5 @@ marmolade
 uri
 artifacts
 /live/*.local.json
+/.claude/settings.local.json
 /live/reports/

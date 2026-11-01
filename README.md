@@ -255,6 +255,16 @@ Transient GET failures are retried, honoring `Retry-After`; a server delay
 that exceeds the remaining request timeout returns the HTTP error immediately.
 New API requests do not use PHP user sessions or cookies.
 
+Redirects (301, 302, 303, 307, 308) are followed by the library, up to 10 per
+request and within the same timeout. The Bearer token, old-API Marmolade header
+and PHP session cookies are sent only while every hop stays on the original
+host; `www.` prefixes and HTTP-to-HTTPS upgrades count as the same host. Other
+hosts receive only `Accept`, `Accept-Language` and `User-Agent`. HTTPS-to-HTTP
+redirects are not followed and return the redirect status as an error.
+307 and 308 keep the method and body; 303, and POST after 301 or 302,
+continue as a GET without a body. Session cookies set on redirect responses
+during PHP login are kept.
+
 `WithSiteUri` and `WithImageServerUri` override generated link hosts. Title
 suggestions retain the server's `title_url`; v1 catalog cards contain their
 own URLs. Search models expose numeric image IDs and resolved picture URLs.
@@ -268,6 +278,8 @@ For a caller-supplied transport used with both APIs, disable automatic cookie
 handling (`HttpClientHandler.UseCookies = false`) so PHP response cookies cannot
 be added to new API requests by the handler. The built-in and dependency injection
 transports already disable it; PHP session cookies are attached explicitly by the library.
+Likewise, set `HttpClientHandler.AllowAutoRedirect = false` on a supplied transport
+so the library's redirect handling applies; the built-in transports already do.
 
 ## Development
 
