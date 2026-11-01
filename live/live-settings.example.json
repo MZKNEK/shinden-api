@@ -1,0 +1,80 @@
+{
+  "userAgent": "Shinden.NET.LiveTests/0.7",
+  "requestTimeoutSeconds": 60,
+  "requestSpacingMilliseconds": 750,
+  "newApi": {
+    "baseUri": "https://shinden.pl/",
+    "authenticatedTestsEnabled": true,
+    "authentication": {
+      "bearerToken": ""
+    }
+  },
+  "legacyApi": {
+    "enabled": true,
+    "baseUri": "https://shinden.pl/",
+    "authentication": {
+      "apiKey": "",
+      "marmoladeHeaderName": ""
+    },
+    "userAuthentication": {
+      "enabled": false,
+      "username": "",
+      "password": "",
+      "expectedUserId": 0
+    }
+  },
+  "data": {
+    "userId": 0,
+    "animeId": 0,
+    "mangaId": 0,
+    "characterId": 0,
+    "staffId": 0,
+    "pocketWaifuUserId": 0,
+    "cardId": 0,
+    "userQuery": "Sniku",
+    "animeQuery": "Gintama",
+    "mangaQuery": "Dorohedoro",
+    "characterQuery": "Gintoki",
+    "staffQuery": "Marina",
+    "tagQuery": "akcja",
+    "seasonYear": 2026,
+    "season": "Autumn"
+  },
+  "includeBulkCharacterLists": false,
+  "includePocketWaifu": true,
+  "writes": {
+    "enabled": false,
+    "expectedUserId": 0,
+    "favourite": {
+      "enabled": false,
+      "type": "character",
+      "objectId": 0,
+      "initiallyFavourite": null
+    },
+    "titleStatus": {
+      "enabled": false,
+      "titleId": 0,
+      "initialStatus": null,
+      "initialStateConfirmed": false,
+      "testStatus": "hold"
+    },
+    "animeRating": {
+      "enabled": false,
+      "titleId": 0,
+      "category": "total",
+      "testValue": 8,
+      "restoreValue": null
+    },
+    "mangaRating": {
+      "enabled": false,
+      "titleId": 0,
+      "category": "total",
+      "testValue": 8,
+      "restoreValue": null
+    },
+    "increaseWatched": {
+      "enabled": false,
+      "titleId": 0
+    }
+  }
+}

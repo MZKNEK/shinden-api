@@ -1,9 +1,0 @@
-﻿[
-  {
-    Id: 85,
-    Name: Sniku,
-    Rank: Staruszek,
-    AvatarUrl: https://cdn.shinden.eu/cdn1/avatars/225x350/85.jpg?v18,
-    ProfileUrl: http://fake.shinden.test/user/85
-  }
-]

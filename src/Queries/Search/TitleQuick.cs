@@ -1,35 +1,22 @@
-using System.Collections.Generic;
+using System;
 using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.Search;
 
 public class TitleQuick : Search<TitleSearchResult>
 {
-    public enum SearchType
-    {
-        Anime,
-        Manga,
-        Both
-    }
+    public enum SearchType { Anime, Manga, Both }
 
-    public TitleQuick(string name, SearchType type) : base("title", name, TypeToParameters(type)) {}
+    public TitleQuick(string name, SearchType type = SearchType.Both, uint limit = 10, ulong? ignoreId = null)
+        : base("titles", name, RequestUri.Parameter("types", Types(type)),
+            RequestUri.Parameter("limit", limit is >= 1 and <= 50 ? limit : throw new ArgumentOutOfRangeException(nameof(limit))),
+            RequestUri.Parameter("ignore_id", ignoreId)) {}
 
-    private static KeyValuePair<string, string>[] TypeToParameters(SearchType type) => type switch
+    private static string Types(SearchType type) => type switch
     {
-        SearchType.Anime => new[]
-        {
-            new KeyValuePair<string, string>("accepted_types", "Anime"),
-            new KeyValuePair<string, string>("decode", "1")
-        },
-        SearchType.Manga => new[]
-        {
-            new KeyValuePair<string, string>("accepted_types", "Manga;Manhua;Novel;Doujin;Manhwa;OEL;One Shot"),
-            new KeyValuePair<string, string>("decode", "1")
-        },
-        _ => new[]
-        {
-            new KeyValuePair<string, string>("accepted_types", "Anime;Manga;Manhua;Novel;Doujin;Manhwa;OEL;One Shot"),
-            new KeyValuePair<string, string>("decode", "1")
-        }
+        SearchType.Anime => "Anime",
+        SearchType.Manga => "Manga;Manhua;Manhwa;One Shot;Webtoon;Doujin;OEL;Novel;Webnovel",
+        SearchType.Both => null,
+        _ => throw new ArgumentOutOfRangeException(nameof(type))
     };
 }

@@ -35,18 +35,23 @@ public sealed class AnimeSearchOptionsBuilder
     public AnimeSearchOptionsBuilder With(string name, string value)
     {
         if (!string.IsNullOrWhiteSpace(name) && value is not null)
+        {
+            _values.RemoveAll(entry => !entry.Indexed && entry.Name == name);
             _values.Add(new SearchParameter(name, value, false));
+        }
 
         return this;
     }
 
     public AnimeSearchOptionsBuilder WithQuery(string query) => With("search", query);
 
-    public AnimeSearchOptionsBuilder WithOffset(uint offset)
-        => With("offset", offset.ToString(CultureInfo.InvariantCulture));
+    public AnimeSearchOptionsBuilder WithPage(uint page)
+        => page > 0 ? With("page", page.ToString(CultureInfo.InvariantCulture))
+            : throw new ArgumentOutOfRangeException(nameof(page));
 
     public AnimeSearchOptionsBuilder WithPageSize(uint pageSize)
-        => With("per_page", pageSize.ToString(CultureInfo.InvariantCulture));
+        => pageSize > 0 ? With("limit", pageSize.ToString(CultureInfo.InvariantCulture))
+            : throw new ArgumentOutOfRangeException(nameof(pageSize));
 
     public AnimeSearchOptionsBuilder WithSort(string field, bool descending = false)
         => With("sort_by", field).With("sort_order", descending ? "desc" : "asc");
@@ -105,42 +110,22 @@ public sealed class AnimeSearch : Request<SearchResult>
         : this(configure(new AnimeSearchOptionsBuilder())) { }
 
     internal override HttpRequestMessage Build(Uri uri, string token)
+        => BrowseRequest.Build(uri, "anime", _options);
+}
+
+public sealed class MangaSearch : Request<SearchResult>
+{
+    private readonly AnimeSearchOptions _options;
+    public MangaSearch(AnimeSearchOptions options) => _options = options ?? new AnimeSearchOptionsBuilder().Build();
+    internal override HttpRequestMessage Build(Uri uri, string token) => BrowseRequest.Build(uri, "manga", _options);
+}
+
+internal static class BrowseRequest
+{
+    internal static HttpRequestMessage Build(Uri uri, string obj, AnimeSearchOptions options)
     {
-        var form = new List<KeyValuePair<string, string>>
-        {
-            RequestUri.Parameter("for_seasons", 1)
-        };
-
-        var indexes = new Dictionary<string, uint>();
-        var hasOffset = false;
-        foreach (var entry in _options.Values)
-        {
-            var name = entry.Name;
-            hasOffset |= !entry.Indexed && entry.Name == "offset";
-            if (entry.Indexed)
-            {
-                indexes.TryGetValue(entry.Name, out var index);
-                name = $"{entry.Name}[{index}]";
-                indexes[entry.Name] = index + 1;
-            }
-
-            form.Add(new KeyValuePair<string, string>(name, entry.Value));
-        }
-
-        if (!hasOffset)
-            form.Insert(0, RequestUri.Parameter("offset", 0));
-
-        return new HttpRequestMessage
-        {
-            Method = HttpMethod.Post,
-            RequestUri = RequestUri.Create(uri, "api/anime/search",
-                RequestUri.Parameter("api_key", token),
-                RequestUri.Parameter("lang", "pl"),
-                RequestUri.Parameter("decode", 1),
-                RequestUri.Parameter("for_season", 1)),
-            Content = RequestUri.Form(form.ToArray())
-        };
+        var parameters = options.Values.Select(entry => new KeyValuePair<string, string>(
+            entry.Indexed ? entry.Name + "[]" : entry.Name, entry.Value)).ToArray();
+        return new HttpRequestMessage(HttpMethod.Get, RequestUri.Create(uri, "v1/search/browse/" + obj, parameters));
     }
-
-    internal override bool RequireHttps() => true;
 }

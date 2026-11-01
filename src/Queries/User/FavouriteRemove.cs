@@ -5,7 +5,7 @@ using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.User;
 
-public class FavouriteRemove : Request<ModificationResult>
+public class FavouriteRemove : LegacyRequest<ModificationResult>
 {
     private readonly FavouriteQueryConfig _config;
 

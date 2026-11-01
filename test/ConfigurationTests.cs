@@ -6,15 +6,10 @@ namespace ShindenAPI.Test;
 public class ConfigurationTests
 {
     [TestMethod]
-    public void AuthBuilderRejectsPartialUserCredentials()
+    public void AuthBuilderSupportsGuestsAndRequiresUserAgent()
     {
-        var builder = new AuthBuilder()
-            .WithToken("token")
-            .WithUserAgent("test-agent")
-            .WithUsername("user");
-
-        builder.Invoking(value => value.Build())
-            .Should().Throw<ArgumentException>();
+        new AuthBuilder().WithUserAgent("test-agent").Build().Token.Should().BeNull();
+        new AuthBuilder().Invoking(builder => builder.Build()).Should().Throw<ArgumentException>();
     }
 
     [TestMethod]
@@ -39,7 +34,7 @@ public class ConfigurationTests
     public async Task ConfigBuilderAppliesCustomSiteAndImageHosts()
     {
         using var api = new Shinden(config => config
-            .WithUri("https://api.example.test/api")
+            .WithUri("https://api.example.test/")
             .WithSiteUri("https://site.example.test/base/")
             .WithImageServerUri("https://images.example.test/cdn/")
             .WithAuth(auth => auth
@@ -53,6 +48,14 @@ public class ConfigurationTests
         var user = result.Get().Single();
 
         user.ProfileUrl.Should().Be("https://site.example.test/base/user/85");
-        user.AvatarUrl.Should().Be("https://images.example.test/cdn/cdn1/avatars/225x350/85.jpg?v18");
+        user.AvatarUrl.Should().Be("https://images.example.test/cdn/cdn1/avatars/225x350/85.jpg?v1");
+    }
+
+    [TestMethod]
+    public void ProductionApiUsesSiteHostAndNewTitlePath()
+    {
+        var resolver = new ShindenUrlResolver(new Uri("https://api.shinden.pl/"));
+        resolver.GetTitleUrl(11).Should().Be("https://shinden.pl/titles/11");
+        resolver.GetUserProfileUrl(42).Should().Be("https://shinden.pl/user/42");
     }
 }

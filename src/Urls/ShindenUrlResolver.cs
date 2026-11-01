@@ -30,7 +30,8 @@ public sealed class ShindenUrlResolver
         if (!apiUri.IsAbsoluteUri)
             throw new ArgumentException("The API URI must be absolute.", nameof(apiUri));
 
-        SiteUri = Normalize(siteUri ?? new Uri($"{apiUri.Scheme}://{apiUri.Authority}/"));
+        SiteUri = Normalize(siteUri ?? (apiUri.Host.Equals("api.shinden.pl", StringComparison.OrdinalIgnoreCase)
+            ? new Uri("https://shinden.pl/") : new Uri($"{apiUri.Scheme}://{apiUri.Authority}/")));
         ImageServerUri = Normalize(imageServerUri ?? new Uri(DefaultImageServer));
     }
 
@@ -40,7 +41,7 @@ public sealed class ShindenUrlResolver
 
     /// <summary>Builds a title URL.</summary>
     public string GetTitleUrl(ulong titleId)
-        => new Uri(SiteUri, $"t/{titleId}").AbsoluteUri;
+        => new Uri(SiteUri, $"titles/{titleId}").AbsoluteUri;
 
     /// <summary>Builds a staff URL.</summary>
     public string GetStaffUrl(ulong staffId)

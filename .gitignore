@@ -10,3 +10,5 @@ token
 marmolade
 uri
 artifacts
+/live/*.local.json
+/live/reports/

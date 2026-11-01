@@ -1,40 +1,35 @@
-using System;
 using System.Net.Http;
+using System;
+using System.Linq;
 using ShindenAPI.Models;
+using Newtonsoft.Json.Linq;
 
 namespace ShindenAPI.Queries.Title;
 
-public sealed class TitleInfo : Request<AnimeMangaInfo>
+public sealed class TitleInfo : GetRequest<AnimeMangaInfo>
 {
-    private readonly ulong _titleId;
-
-    public TitleInfo(ulong titleId) => _titleId = titleId;
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/title/{_titleId}/info",
-            RequestUri.Parameter("api_key", token),
-            RequestUri.Parameter("lang", "pl"),
-            RequestUri.Parameter("decode", 1))
-    };
+    public TitleInfo(ulong titleId, string language = "pl")
+        : base($"compat/php-api/title/{titleId}/info", RequestUri.Parameter("lang", language)) { }
 }
 
-public sealed class Episodes : Request<TitleEpisodes>
+public sealed class Episodes : GetRequest<TitleEpisodes>
 {
-    private readonly ulong _titleId;
+    public Episodes(ulong titleId, string language = "pl")
+        : base($"compat/php-api/title/{titleId}/episodes", RequestUri.Parameter("lang", language)) { }
 
-    public Episodes(ulong titleId) => _titleId = titleId;
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/title/{_titleId}/episodes",
-            RequestUri.Parameter("api_key", token))
-    };
+    // Non-anime titles return 200 without a body in the compatibility API.
+    internal override TitleEpisodes Parse(string response)
+        => string.IsNullOrWhiteSpace(response) ? new TitleEpisodes() : base.Parse(response);
 }
 
-public sealed class EpisodeRange : Request<EpisodesRange>
+public sealed class Characters : GetRequest<TitleCharacters>
+{
+    public Characters(ulong titleId, string language = "pl")
+        : base($"compat/php-api/title/{titleId}/characters", RequestUri.Parameter("lang", language)) { }
+}
+
+
+public sealed class EpisodeRange : LegacyRequest<EpisodesRange>
 {
     private readonly ulong _titleId;
 
@@ -48,7 +43,7 @@ public sealed class EpisodeRange : Request<EpisodesRange>
     };
 }
 
-public sealed class Recommendations : Request<TitleRecommendations>
+public sealed class Recommendations : LegacyRequest<TitleRecommendations>
 {
     private readonly ulong _titleId;
 
@@ -62,11 +57,22 @@ public sealed class Recommendations : Request<TitleRecommendations>
     };
 }
 
-public sealed class Reviews : Request<TitleReviews>
+public sealed class Reviews : LegacyRequest<TitleReviews>
 {
     private readonly ulong _titleId;
 
     public Reviews(ulong titleId) => _titleId = titleId;
+
+    internal override TitleReviews Parse(string response)
+    {
+        var root = JObject.Parse(response);
+        if (root["reviews"] is JArray reviews)
+        {
+            foreach (var row in reviews.OfType<JObject>())
+                if (row.Property("title_id") is null) row["title_id"] = _titleId;
+        }
+        return root.ToObject<TitleReviews>();
+    }
 
     internal override HttpRequestMessage Build(Uri uri, string token) => new()
     {
@@ -76,7 +82,7 @@ public sealed class Reviews : Request<TitleReviews>
     };
 }
 
-public sealed class Relations : Request<TitleRelations>
+public sealed class Relations : LegacyRequest<TitleRelations>
 {
     private readonly ulong _titleId;
 
@@ -86,20 +92,6 @@ public sealed class Relations : Request<TitleRelations>
     {
         Method = HttpMethod.Get,
         RequestUri = RequestUri.Create(uri, $"api/title/{_titleId}/related",
-            RequestUri.Parameter("api_key", token))
-    };
-}
-
-public sealed class Characters : Request<TitleCharacters>
-{
-    private readonly ulong _titleId;
-
-    public Characters(ulong titleId) => _titleId = titleId;
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/title/{_titleId}/characters",
             RequestUri.Parameter("api_key", token))
     };
 }

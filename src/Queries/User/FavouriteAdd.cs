@@ -5,7 +5,7 @@ using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.User;
 
-public class FavouriteAdd : Request<ModificationResult>
+public class FavouriteAdd : LegacyRequest<ModificationResult>
 {
     private readonly FavouriteQueryConfig _config;
 

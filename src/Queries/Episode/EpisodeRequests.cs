@@ -11,14 +11,13 @@ public sealed class NewEpisodes : Request<List<NewEpisode>>
     internal override HttpRequestMessage Build(Uri uri, string token) => new()
     {
         Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, "api/episode/new",
-            RequestUri.Parameter("api_key", token))
+        RequestUri = RequestUri.Create(uri, "compat/php-api/episode/new")
     };
 
     internal override List<NewEpisode> Parse(string response)
     {
         var root = JToken.Parse(response);
-        var source = root["lastonline"] ?? root;
+        var source = root is JObject obj ? obj["lastonline"] ?? root : root;
         var result = new List<NewEpisode>();
 
         if (source.Type == JTokenType.Array)
@@ -28,8 +27,8 @@ public sealed class NewEpisodes : Request<List<NewEpisode>>
         }
         else if (source.Type == JTokenType.Object)
         {
-            foreach (var item in source.Children())
-                result.Add(item.ToObject<NewEpisode>());
+            foreach (var item in ((JObject)source).Properties())
+                result.Add(item.Value.ToObject<NewEpisode>());
         }
 
         return result;
@@ -41,7 +40,6 @@ public sealed class CurrentSeason : Request<SeasonalAnimeInfo>
     internal override HttpRequestMessage Build(Uri uri, string token) => new()
     {
         Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, "api/anime/current-season",
-            RequestUri.Parameter("api_key", token))
+        RequestUri = RequestUri.Create(uri, "compat/php-api/anime/current-season")
     };
 }

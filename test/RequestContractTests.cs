@@ -1,193 +1,235 @@
 using System.Net;
 using System.Net.Http;
 using ShindenAPI.Credentials;
-using ShindenAPI.Models;
+using ShindenAPI.Queries.Search;
+using ShindenAPI.Queries.V1;
 
 namespace ShindenAPI.Test;
 
 [TestClass]
 public class RequestContractTests
 {
+    private static Shinden CreateApi(RecordingHandler handler, string? token = "shk_test", string uri = "https://fake.shinden.test/")
+        => new(config => config.WithUri(uri).WithMaxRetries(0)
+            .WithAuth(new Auth { Token = token!, UserAgent = "test-agent" }).Build(), handler: handler);
+
     [TestMethod]
-    public async Task LoginFailureIsReturnedAsTypedError()
+    public async Task AllClientOperationsUseExpectedRoutes()
     {
-        using var handler = new CapturingHandler(HttpStatusCode.Unauthorized, "invalid credentials");
-        using var api = new Shinden(
-            new Uri("https://fake.shinden.test/api"),
-            new UserAuth
-            {
-                Token = "token",
-                UserAgent = "test-agent",
-                Nickname = "user",
-                Password = "password"
-            },
-            handler: handler);
+        using var handler = new RecordingHandler();
+        using var api = CreateApi(handler);
+        var covered = new HashSet<string>();
+        async Task Expect<T>(Task<ErrorOr<T>> operation, string path, string? pattern = null) where T : class
+        {
+            var result = await operation;
+            result.IsOk().Should().BeTrue(result.GetMessage());
+            handler.Uri.AbsolutePath.Should().Be(path);
+            handler.Method.Should().Be(HttpMethod.Get);
+            handler.Body.Should().BeNull();
+            handler.Authorization.Should().Be("Bearer shk_test");
+            handler.HadApiKeyHeader.Should().BeFalse();
+            handler.Query().Should().NotContainKey("api_key");
+            covered.Add(pattern ?? path.Replace("/42", "/{id}"));
+        }
 
-        var result = await api.Users.LoginResultAsync();
+        handler.Response = """{"user_id":42}""";
+        await Expect(api.Users.InfoAsync(42), "/compat/php-api/user/42/info");
+        handler.Response = "[]";
+        await Expect(api.Users.LastWatchedAsync(42), "/compat/php-api/user/42/last_view");
+        await Expect(api.Users.LastReadAsync(42), "/compat/php-api/user/42/last_read");
+        await Expect(api.Characters.FlatListAsync(), "/compat/php-api/character/flat-list");
+        await Expect(api.Characters.AnimeFlatListAsync(), "/compat/php-api/character/flat-list-anime");
+        await Expect(api.Search.UsersAsync("nick"), "/v1/search/users");
+        await Expect(api.Search.CharactersAsync("name"), "/v1/search/characters");
+        await Expect(api.Search.StaffAsync("name"), "/v1/search/staff");
+        await Expect(api.Search.TitlesAsync("name"), "/v1/search/titles");
+        await Expect(api.Search.TitlesByIdsAsync(new[] { 42UL, 43UL }), "/v1/search/titles/by-ids");
+        await Expect(api.Search.TagsAsync("name"), "/v1/search/tags");
+        handler.Response = """{"character_id":42}""";
+        await Expect(api.Characters.InfoAsync(42), "/compat/php-api/character/42");
+        handler.Response = "{}";
+        await Expect(api.Titles.CharactersAsync(42), "/compat/php-api/title/42/characters");
+        handler.Response = """{"title":{"title_id":42}}""";
+        await Expect(api.Titles.InfoAsync(42), "/compat/php-api/title/42/info");
+        handler.Response = "{}";
+        await Expect(api.Titles.EpisodesAsync(42), "/compat/php-api/title/42/episodes");
+        await Expect(api.Episodes.NewAsync(), "/compat/php-api/episode/new");
+        await Expect(api.Episodes.CurrentSeasonAsync(), "/compat/php-api/anime/current-season");
+        await Expect(api.Search.AnimeAsync(new AnimeSearchOptionsBuilder().Build()), "/v1/search/browse/anime", "/v1/search/browse/{obj}");
+        await Expect(api.Search.MangaAsync(new AnimeSearchOptionsBuilder().Build()), "/v1/search/browse/manga", "/v1/search/browse/{obj}");
+        await Expect(api.Search.SeasonAsync(2026, Season.Autumn), "/v1/search/season/2026/autumn", "/v1/search/season/{year}/{season}");
+        handler.Response = """{"id":42}""";
+        await Expect(api.Titles.AnimeAsync(42), "/v1/catalog/anime/42");
+        await Expect(api.Characters.CatalogAsync(42), "/v1/catalog/characters/42");
+        handler.Response = """{"userId":42}""";
+        await Expect(api.Users.StatsAsync(42), "/v1/users/42/stats");
+        await Expect(api.PocketWaifu.CardsAsync(42), "/v1/users/42/pw/cards");
+        await Expect(api.PocketWaifu.CardIdsAsync(42), "/v1/users/42/pw/cards/ids");
+        await Expect(api.PocketWaifu.TagsAsync(42), "/v1/users/42/pw/tags");
+        await Expect(api.PocketWaifu.GenresAsync(), "/v1/pw/genres");
+        await Expect(api.PocketWaifu.CardAsync(42), "/v1/pw/cards/42", "/v1/pw/cards/{wid}");
+        await Expect(api.HealthAsync(), "/health");
 
+        covered.Should().HaveCount(28);
+    }
+
+    [DataTestMethod]
+    [DataRow("https://fake.shinden.test/gateway", "/gateway/compat/php-api/title/42/info")]
+    [DataRow("https://fake.shinden.test/gateway/", "/gateway/compat/php-api/title/42/info")]
+    [DataRow("https://fake.shinden.test/", "/compat/php-api/title/42/info")]
+    public async Task BasePathIsPreservedAndTokenOnlyTravelsInHeader(string baseUri, string expectedPath)
+    {
+        using var handler = new RecordingHandler { Response = """{"title":{"title_id":42}}""" };
+        using var api = CreateApi(handler, "shk_secret", baseUri);
+        (await api.Titles.InfoAsync(42)).IsOk().Should().BeTrue();
+        handler.Uri.AbsolutePath.Should().Be(expectedPath);
+        handler.Uri.ToString().Should().NotContain("shk_secret").And.NotContain("api_key");
+        handler.Authorization.Should().Be("Bearer shk_secret");
+        handler.Query().Should().NotContainKey("decode");
+    }
+
+    [TestMethod]
+    public async Task PublicSearchWorksWithoutATokenAndEscapesQuery()
+    {
+        using var handler = new RecordingHandler { Response = "[]" };
+        using var api = CreateApi(handler, token: null);
+        (await api.Search.CharactersAsync("名前 & test=1", limit: 20)).IsOk().Should().BeTrue();
+        handler.Authorization.Should().BeNull();
+        handler.Query()["query"].Should().Equal("名前 & test=1");
+        handler.Query()["limit"].Should().Equal("20");
+        handler.Query().Should().NotContainKey("test");
+    }
+
+    [TestMethod]
+    public async Task BrowseUsesGetQueryPaginationAndPhpArrays()
+    {
+        using var handler = new RecordingHandler { Response = """{"total":3,"items":[]}""" };
+        using var api = CreateApi(handler);
+        var result = await api.Search.AnimeAsync(builder => builder.WithQuery("Test & title")
+            .WithPage(3).WithPageSize(20).WithType("TV").WithType("OVA")
+            .WithStatus("Finished Airing").WithSort("title", descending: true).Build());
+        result.Get().Total.Should().Be(3);
+        handler.Method.Should().Be(HttpMethod.Get);
+        handler.Body.Should().BeNull();
+        var query = handler.Query();
+        query["page"].Should().Equal("3");
+        query["limit"].Should().Equal("20");
+        query["series_type[]"].Should().Equal("TV", "OVA");
+        query["series_status[]"].Should().Equal("Finished Airing");
+        query["search"].Should().Equal("Test & title");
+        query.Should().NotContainKey("offset").And.NotContainKey("per_page");
+    }
+
+    [TestMethod]
+    public async Task TitleFiltersIncludeNewMangaTypesAndSupportExclusions()
+    {
+        using var handler = new RecordingHandler { Response = "[]" };
+        using var api = CreateApi(handler);
+        await api.Search.TitlesAsync("title", TitleQuick.SearchType.Manga, limit: 50, ignoreId: 99);
+        handler.Query()["types"].Single().Should().Contain("Webtoon").And.Contain("Webnovel");
+        handler.Query()["ignore_id"].Should().Equal("99");
+        handler.Query().Should().NotContainKey("decode");
+        await api.Search.TitlesByIdsAsync(new[] { 42UL, 43UL });
+        handler.Query()["ids"].Should().Equal("42,43");
+    }
+
+    [TestMethod]
+    public async Task CompatibilityOptionsUseDocumentedFlagsAndLookupParameters()
+    {
+        using var handler = new RecordingHandler();
+        using var api = CreateApi(handler);
+        handler.Response = """{"character_id":42}""";
+        await api.AskAsync(new Queries.People.CharacterInfo(42, new Queries.People.CharacterInfoOptions
+        {
+            Biography = false, Points = false, AnimeOnly = true, Language = "jp"
+        }));
+        handler.Query()["bio"].Should().Equal("0");
+        handler.Query()["points"].Should().Equal("0");
+        handler.Query()["table"].Should().Equal("animes");
+        handler.Query()["lang"].Should().Equal("jp");
+        await api.AskAsync(new Queries.Title.Episodes(42, language: "en"));
+        handler.Query()["lang"].Should().Equal("en");
+        await api.AskAsync(new Queries.User.UserInfo(42, new Queries.User.UserInfoOptions { ForumId = 99, Name = "Nick & test" }));
+        handler.Query()["vb"].Should().Equal("99");
+        handler.Query()["name"].Should().Equal("Nick & test");
+    }
+
+    [TestMethod]
+    public async Task PocketWaifuSharesFiltersAndPreservesOpaqueCursor()
+    {
+        using var handler = new RecordingHandler();
+        using var api = CreateApi(handler);
+        var options = new PwCardOptions { Query = "A & B", Ultimate = false, Tradable = true, Tags = "1,2",
+            ExcludedTags = "3", TagMode = "and", Limit = 100, Cursor = "a+b/=", Sort = "power", Direction = "desc" };
+        await api.PocketWaifu.CardsAsync(42, options);
+        var query = handler.Query();
+        query["cursor"].Should().Equal("a+b/=");
+        query["ultimate"].Should().Equal("0");
+        query["tradable"].Should().Equal("1");
+        query["limit"].Should().Equal("100");
+        query.Should().NotContainKey("cursed");
+        await api.PocketWaifu.CardIdsAsync(42, options);
+        var idsQuery = handler.Query();
+        idsQuery.Should().NotContainKey("cursor").And.NotContainKey("limit");
+        foreach (var filter in query.Where(pair => pair.Key is not ("cursor" or "limit")))
+            idsQuery[filter.Key].Should().Equal(filter.Value);
+    }
+
+    [DataTestMethod]
+    [DataRow(401, """{"code":"invalid_api_key","message":"Invalid token"}""", "invalid_api_key", "Invalid token")]
+    [DataRow(403, """{"code":"api_key_scope","message":"Missing scope","field":"users"}""", "api_key_scope", "Missing scope")]
+    [DataRow(400, """{"status":"wrong api key"}""", null, "wrong api key")]
+    [DataRow(404, "", null, "")]
+    [DataRow(502, "<html>Proxy error</html>", null, "<html>Proxy error</html>")]
+    public async Task ErrorsPreserveBothApiFormats(int status, string body, string? apiCode, string message)
+    {
+        using var handler = new RecordingHandler { StatusCode = (HttpStatusCode)status, Response = body };
+        using var api = CreateApi(handler);
+        var result = await api.Users.StatsAsync(42);
         result.IsOk().Should().BeFalse();
-        result.Error.Type.Should().Be(ErrorType.Http);
-        result.GetCode().Should().Be((int)HttpStatusCode.Unauthorized);
+        result.Error.Code.Should().Be(status);
+        result.Error.ApiCode.Should().Be(apiCode);
+        result.Error.Message.Should().Be(message);
+        result.Error.RawResponse.Should().Be(body);
         result.TryGet(out _).Should().BeFalse();
+        result.Invoking(value => value.Get()).Should().Throw<InvalidOperationException>();
+        if (status == 403) result.Error.Field.Should().Be("users");
     }
 
     [TestMethod]
-    public void FailedResultDoesNotLookLikeSuccess()
+    public async Task RateLimitExposesRetryAfterFromHeaderOrBody()
     {
-        var result = ErrorOr<string>.Failure(
-            new Error { Type = ErrorType.Exception, Code = 500, Message = "failed" });
-
-        result.IsOk().Should().BeFalse();
-        result.IsError().Should().BeTrue();
-        result.Invoking(value => value.Get())
-            .Should().Throw<InvalidOperationException>();
-    }
-
-    [TestMethod]
-    public async Task ApiKeyIsEscapedAndTrailingBaseSlashIsNormalized()
-    {
-        using var handler = new CapturingHandler();
-        using var api = new Shinden(
-            new Uri("https://fake.shinden.test/api/"),
-            new Auth { Token = "token&next=value", UserAgent = "test-agent" },
-            handler: handler);
-
-        await api.AskAsync(new Queries.User.FavouriteAdd(x => x
-            .WithUserId(1)
-            .WithTitleId(2)
-            .Build()));
-
-        handler.LastRequestUri!.AbsolutePath.Should().Be("/api/userlist/1/fav");
-        handler.LastRequestUri.Query.Should().Contain("api_key=token%26next%3Dvalue");
-    }
-
-    [TestMethod]
-    public async Task TimeoutIsReturnedAsTypedError()
-    {
-        using var handler = new BlockingHandler();
-        using var client = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromMilliseconds(10)
-        };
-        using var api = new Shinden(
-            new Uri("https://fake.shinden.test/api"),
-            new Auth { Token = "token", UserAgent = "test-agent" },
-            client: client);
-
-        var result = await api.AskAsync(new Queries.Search.User("test"));
-
-        result.IsOk().Should().BeFalse();
-        result.Error.Type.Should().Be(ErrorType.Timeout);
-    }
-
-    [TestMethod]
-    public void ExternalHandlerRemainsOwnedByCaller()
-    {
-        var handler = new TrackingHandler();
-        using (var api = new Shinden(
-            new Uri("https://fake.shinden.test/api"),
-            new Auth { Token = "token", UserAgent = "test-agent" },
-            handler: handler))
-        {
-        }
-
-        handler.WasDisposed.Should().BeFalse();
-        handler.Dispose();
-    }
-
-    [TestMethod]
-    public async Task AnimeSearchAddsOneExplicitOffset()
-    {
-        using var handler = new CapturingHandler();
+        using var handler = new RecordingHandler { StatusCode = (HttpStatusCode)429, RetryAfter = 12,
+            Response = """{"code":"too_fast","message":"Slow down","retry_after":5}""" };
         using var api = CreateApi(handler);
-
-        var result = await api.Search.AnimeAsync(new Queries.Search.AnimeSearchOptionsBuilder()
-            .WithQuery("test")
-            .WithOffset(20)
-            .Build());
-
-        result.IsOk().Should().BeTrue();
-        handler.LastForm!.Split('&').Count(value => value.StartsWith("offset=")).Should().Be(1);
-        handler.LastForm.Should().Contain("offset=20");
+        (await api.Users.StatsAsync(42)).Error.RetryAfterSeconds.Should().Be(12);
+        handler.RetryAfter = null;
+        (await api.Users.StatsAsync(42)).Error.RetryAfterSeconds.Should().Be(5);
     }
 
     [TestMethod]
-    public async Task EnumActionsUseApiValues()
+    public async Task EmptyCompatibilityEpisodesAndHealthAreSuccessful()
     {
-        using var handler = new CapturingHandler();
+        using var handler = new RecordingHandler { Response = "" };
         using var api = CreateApi(handler);
-
-        var statusResult = await api.Users.ChangeTitleStatusAsync(1, 2, TitleListStatus.OnHold);
-        statusResult.IsOk().Should().BeTrue();
-        handler.LastForm.Should().Contain("status=hold");
-
-        var ratingResult = await api.Users.RateAnimeAsync(2, AnimeRatingCategory.Characters, 8);
-        ratingResult.IsOk().Should().BeTrue();
-        handler.LastForm.Should().Contain("type=titlecahracters");
-        handler.LastForm.Should().Contain("value=8");
+        var episodes = (await api.Titles.EpisodesAsync(42)).Get();
+        episodes.Episodes.Should().BeEmpty();
+        episodes.ConnectedEpisodes.Should().BeEmpty();
+        (await api.HealthAsync()).Get().Response.Should().BeEmpty();
+        (await api.Titles.InfoAsync(42)).Error.Type.Should().Be(ErrorType.Parsing);
     }
 
-    private static Shinden CreateApi(CapturingHandler handler) => new(
-        new Uri("https://fake.shinden.test/api"),
-        new Auth { Token = "token", UserAgent = "test-agent" },
-        handler: handler);
-
-    private sealed class CapturingHandler : HttpMessageHandler
+    [TestMethod]
+    public void ApiLimitsAreValidated()
     {
-        private readonly HttpStatusCode _statusCode;
-        private readonly string _response;
-
-        internal CapturingHandler(
-            HttpStatusCode statusCode = HttpStatusCode.OK,
-            string response = "{}")
-        {
-            _statusCode = statusCode;
-            _response = response;
-        }
-
-        internal string? LastForm { get; private set; }
-        internal Uri? LastRequestUri { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastRequestUri = request.RequestUri;
-            LastForm = request.Content is null
-                ? null
-                : await request.Content.ReadAsStringAsync(cancellationToken);
-
-            return new HttpResponseMessage(_statusCode)
-            {
-                Content = new StringContent(_response)
-            };
-        }
-    }
-
-    private sealed class BlockingHandler : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK);
-        }
-    }
-
-    private sealed class TrackingHandler : HttpMessageHandler
-    {
-        internal bool WasDisposed { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{}")
-            });
-
-        protected override void Dispose(bool disposing)
-        {
-            WasDisposed = true;
-            base.Dispose(disposing);
-        }
+        Action userLimit = () => new User("nick", 21);
+        Action titleLimit = () => new TitleQuick("title", limit: 51);
+        Action historyLimit = () => new Queries.User.LastRead(42, 101);
+        Action seasonYear = () => new SeasonTitles(1899, Season.Autumn);
+        Action seasonLimit = () => new SeasonTitles(2026, Season.Autumn, limit: 2001);
+        Action emptyIds = () => new TitlesByIds(Array.Empty<ulong>());
+        Action tooManyIds = () => new TitlesByIds(Enumerable.Repeat(1UL, 101));
+        foreach (var action in new[] { userLimit, titleLimit, historyLimit, seasonYear, seasonLimit, emptyIds, tooManyIds })
+            action.Should().Throw<ArgumentException>();
     }
 }

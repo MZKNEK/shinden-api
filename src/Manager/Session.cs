@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using ShindenAPI.Models;
 
 namespace ShindenAPI;
@@ -6,9 +7,10 @@ namespace ShindenAPI;
 internal class UserSession
 {
     private readonly TimeSpan _lifetime;
+    private readonly CookieContainer _cookies;
 
     internal UserSession(string id, string name, string hash, UserSearchResult user,
-        DateTimeOffset created, TimeSpan lifetime)
+        DateTimeOffset created, TimeSpan lifetime, CookieContainer cookies = null, string[] cookieSecrets = null)
     {
         Id = id;
         Name = name;
@@ -16,6 +18,8 @@ internal class UserSession
         User = user;
         Created = created;
         _lifetime = lifetime;
+        _cookies = cookies;
+        CookieSecrets = cookieSecrets ?? Array.Empty<string>();
     }
 
     private DateTimeOffset Created { get; }
@@ -26,6 +30,10 @@ internal class UserSession
     internal DateTime Expires => Created.Add(_lifetime).UtcDateTime;
 
     internal UserSearchResult User { get; }
+    internal string[] CookieSecrets { get; }
+
+    internal string GetCookieHeader(Uri uri)
+        => _cookies is null ? $"name={Name}; id={Id}" : _cookies.GetCookieHeader(uri);
 
     internal bool IsValid(DateTimeOffset now) => now - Created < _lifetime;
 }

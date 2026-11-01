@@ -1,65 +1,46 @@
+using ShindenAPI.Models;
+using System.Net.Http;
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
-using ShindenAPI.Models;
 
 namespace ShindenAPI.Queries.User;
 
-public sealed class UserInfo : Request<Models.UserInfo>
+public sealed class UserInfoOptions
 {
-    private readonly ulong _userId;
-
-    public UserInfo(ulong userId) => _userId = userId;
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/user/{_userId}/info",
-            RequestUri.Parameter("api_key", token))
-    };
+    public ulong? Id { get; init; }
+    public ulong? ForumId { get; init; }
+    public string Name { get; init; }
+    public string Email { get; init; }
 }
 
-public sealed class LastWatched : Request<List<Models.LastWatched>>
+public sealed class UserInfo : GetRequest<Models.UserInfo>
 {
-    private readonly ulong _userId;
-    private readonly uint _limit;
+    public UserInfo(ulong userId, UserInfoOptions options = null)
+        : base($"compat/php-api/user/{userId}/info", RequestUri.Parameter("id", options?.Id),
+            RequestUri.Parameter("vb", options?.ForumId), RequestUri.Parameter("name", options?.Name),
+            RequestUri.Parameter("email", options?.Email)) { }
+}
 
+public sealed class LastWatched : GetRequest<List<Models.LastWatched>>
+{
     public LastWatched(ulong userId, uint limit = 5)
-    {
-        _userId = userId;
-        _limit = limit;
-    }
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/user/{_userId}/last_view",
-            RequestUri.Parameter("api_key", token),
-            RequestUri.Parameter("limit", _limit))
-    };
+        : base($"compat/php-api/user/{userId}/last_view", HistoryLimit.Parameter(limit)) { }
 }
 
-public sealed class LastRead : Request<List<Models.LastRead>>
+public sealed class LastRead : GetRequest<List<Models.LastRead>>
 {
-    private readonly ulong _userId;
-    private readonly uint _limit;
-
     public LastRead(ulong userId, uint limit = 5)
-    {
-        _userId = userId;
-        _limit = limit;
-    }
-
-    internal override HttpRequestMessage Build(Uri uri, string token) => new()
-    {
-        Method = HttpMethod.Get,
-        RequestUri = RequestUri.Create(uri, $"api/user/{_userId}/last_read",
-            RequestUri.Parameter("api_key", token),
-            RequestUri.Parameter("limit", _limit))
-    };
+        : base($"compat/php-api/user/{userId}/last_read", HistoryLimit.Parameter(limit)) { }
 }
 
-public sealed class FavouriteCharacters : Request<List<Models.FavouriteCharacter>>
+internal static class HistoryLimit
+{
+    internal static KeyValuePair<string, string> Parameter(uint limit) => RequestUri.Parameter("limit",
+        limit is >= 1 and <= 100 ? limit : throw new ArgumentOutOfRangeException(nameof(limit)));
+}
+
+
+public sealed class FavouriteCharacters : LegacyRequest<List<Models.FavouriteCharacter>>
 {
     private readonly ulong _userId;
 
@@ -73,7 +54,7 @@ public sealed class FavouriteCharacters : Request<List<Models.FavouriteCharacter
     };
 }
 
-public sealed class ChangeTitleStatus : Request<TitleStatusAfterChange>
+public sealed class ChangeTitleStatus : LegacyRequest<TitleStatusAfterChange>
 {
     private readonly ulong _userId;
     private readonly ulong _titleId;
@@ -100,7 +81,7 @@ public sealed class ChangeTitleStatus : Request<TitleStatusAfterChange>
     internal override bool RequireHttps() => true;
 }
 
-public sealed class RemoveTitleStatus : Request<TitleStatusAfterChange>
+public sealed class RemoveTitleStatus : LegacyRequest<TitleStatusAfterChange>
 {
     private readonly ulong _userId;
     private readonly ulong _titleId;
@@ -121,7 +102,7 @@ public sealed class RemoveTitleStatus : Request<TitleStatusAfterChange>
     internal override bool RequireHttps() => true;
 }
 
-public sealed class IncreaseWatchedEpisode : Request<IncreaseWatchedResult>
+public sealed class IncreaseWatchedEpisode : LegacyRequest<IncreaseWatchedResult>
 {
     private readonly ulong _userId;
     private readonly ulong _titleId;
@@ -142,7 +123,7 @@ public sealed class IncreaseWatchedEpisode : Request<IncreaseWatchedResult>
     internal override bool RequireHttps() => true;
 }
 
-public sealed class RateAnime : Request<Status>
+public sealed class RateAnime : LegacyRequest<Status>
 {
     private readonly ulong _titleId;
     private readonly string _type;
@@ -171,7 +152,7 @@ public sealed class RateAnime : Request<Status>
     internal override bool RequireHttps() => true;
 }
 
-public sealed class RateManga : Request<Status>
+public sealed class RateManga : LegacyRequest<Status>
 {
     private readonly ulong _titleId;
     private readonly string _type;

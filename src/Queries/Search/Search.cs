@@ -32,7 +32,7 @@ public class Search<TReturn> : Request<List<TReturn>>
         return new HttpRequestMessage
         {
             Method = HttpMethod.Get,
-            RequestUri = RequestUri.Create(uri, "api/" + _what + "/search", parameters.ToArray())
+            RequestUri = RequestUri.Create(uri, "v1/search/" + _what, parameters.ToArray())
         };
     }
 }

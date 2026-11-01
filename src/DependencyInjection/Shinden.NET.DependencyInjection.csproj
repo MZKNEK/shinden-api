@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <Version>0.6.7</Version>
+    <Version>0.7.0</Version>
     <PackageId>Shinden.NET.DependencyInjection</PackageId>
     <Authors>Sniku</Authors>
     <Description>Dependency injection integration for Shinden.NET.</Description>

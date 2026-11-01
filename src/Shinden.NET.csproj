@@ -5,7 +5,7 @@
     <LangVersion>11.0</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <Version>0.6.7</Version>
+    <Version>0.7.0</Version>
     <Authors>Sniku</Authors>
     <Copyright>Copyright 2026 © Sniku. All rights reserved.</Copyright>
     <PackageTags>shinden rest api .net shinden.pl wrapper</PackageTags>

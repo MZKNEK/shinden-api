@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Text;
 
@@ -18,7 +19,9 @@ internal static class RequestUri
 
         var baseBuilder = new UriBuilder(baseUri)
         {
-            Path = baseUri.AbsolutePath.TrimEnd('/')
+            Path = baseUri.AbsolutePath.TrimEnd('/') + "/",
+            Query = string.Empty,
+            Fragment = string.Empty
         };
         if (string.IsNullOrEmpty(baseBuilder.Path))
             baseBuilder.Path = "/";
@@ -52,5 +55,6 @@ internal static class RequestUri
         => new FormUrlEncodedContent(values);
 
     internal static KeyValuePair<string, string> Parameter(string name, object value)
-        => new(name, value?.ToString());
+        => new(name, value is IFormattable formatted
+            ? formatted.ToString(null, CultureInfo.InvariantCulture) : value?.ToString());
 }

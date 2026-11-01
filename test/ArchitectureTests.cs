@@ -15,64 +15,36 @@ public class ArchitectureTests
         using var handler = new HeaderHandler();
         using var client = new HttpClient(handler);
         using var api = new Shinden(
-            new Uri("https://fake.shinden.test/api"),
+            new Uri("https://fake.shinden.test/"),
             new Auth
             {
                 Token = "token",
-                UserAgent = "test-agent",
-                Marmolade = "x-marmolade"
+                UserAgent = "test-agent"
             },
             client: client);
 
-        await api.AskAsync(new Queries.User.FavouriteAdd(x => x
-            .WithUserId(1)
-            .WithTitleId(2)
-            .Build()));
+        await api.Titles.InfoAsync(1);
 
         client.DefaultRequestHeaders.Should().NotContain(x =>
             x.Key.Equals("User-Agent", StringComparison.OrdinalIgnoreCase));
         client.DefaultRequestHeaders.Should().NotContain(x =>
-            x.Key.Equals("x-marmolade", StringComparison.OrdinalIgnoreCase));
+            x.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase));
         handler.RequestHadAcceptLanguage.Should().BeTrue();
         handler.RequestHadAccept.Should().BeTrue();
         handler.RequestHadUserAgent.Should().BeTrue();
-        handler.RequestHadMarmolade.Should().BeTrue();
+        handler.RequestHadAuthorization.Should().BeTrue();
     }
 
-    [TestMethod]
-    public async Task SessionExpirationUsesConfiguredClock()
-    {
-        var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        using var api = new Shinden(config => config
-            .WithUri("https://fake.shinden.test/api")
-            .WithSessionLifetime(TimeSpan.FromMinutes(1))
-            .WithClock(() => now)
-            .WithAuth(new UserAuth
-            {
-                Token = "token",
-                UserAgent = "test-agent",
-                Nickname = "user",
-                Password = "password"
-            })
-            .Build(),
-            handler: new FakeApiHandler());
-
-        (await api.Users.LoginResultAsync()).IsOk().Should().BeTrue();
-        api.Users.IsValidSession().Should().BeTrue();
-
-        now = now.AddMinutes(2);
-
-        api.Users.IsValidSession().Should().BeFalse();
-    }
-
-    [TestMethod]
-    public async Task RetryPolicyRetriesTransientGetFailures()
+    [DataTestMethod]
+    [DataRow(503)]
+    [DataRow(429)]
+    public async Task RetryPolicyRetriesTransientGetFailures(int status)
     {
         using var handler = new RetryHandler(
-            new HttpStatusCode[] { HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK },
-            "[{\"user_id\":85,\"name\":\"retry\",\"rank\":\"Tester\",\"avatar\":\"18\"}]");
+            new HttpStatusCode[] { (HttpStatusCode)status, HttpStatusCode.OK },
+            "[{\"user_id\":85,\"name\":\"retry\",\"rank\":\"Tester\",\"avatar\":true}]");
         using var api = new Shinden(config => config
-            .WithUri("https://fake.shinden.test/api")
+            .WithUri("https://fake.shinden.test/")
             .WithMaxRetries(1)
             .WithRetryDelay(TimeSpan.Zero)
             .WithAuth(new Auth { Token = "token", UserAgent = "test-agent" })
@@ -83,28 +55,43 @@ public class ArchitectureTests
 
         result.IsOk().Should().BeTrue();
         handler.CallCount.Should().Be(2);
+        handler.AuthorizationValues.Should().Equal("Bearer token", "Bearer token");
     }
 
     [TestMethod]
-    public async Task RetryPolicyDoesNotRetryMutatingRequests()
+    public async Task LongRetryAfterReturnsRateLimitInsteadOfTimeout()
     {
-        using var handler = new RetryHandler(
-            new HttpStatusCode[] { HttpStatusCode.ServiceUnavailable }, "{}");
-        using var api = new Shinden(config => config
-            .WithUri("https://fake.shinden.test/api")
-            .WithMaxRetries(3)
-            .WithRetryDelay(TimeSpan.Zero)
-            .WithAuth(new Auth { Token = "token", UserAgent = "test-agent" })
-            .Build(),
-            handler: handler);
-
-        var result = await api.AskAsync(new Queries.User.FavouriteAdd(x => x
-            .WithUserId(1)
-            .WithTitleId(2)
-            .Build()));
-
-        result.IsOk().Should().BeFalse();
+        using var handler = new RecordingHandler
+        {
+            StatusCode = (HttpStatusCode)429, RetryAfter = 60,
+            Response = """{"code":"too_fast","message":"Slow down"}"""
+        };
+        using var api = new Shinden(config => config.WithUri("https://fake.shinden.test/")
+            .WithRequestTimeout(TimeSpan.FromSeconds(1)).WithMaxRetries(2)
+            .WithAuth(new Auth { UserAgent = "test" }).Build(), handler: handler);
+        var result = await api.Users.StatsAsync(42);
+        result.Error.Code.Should().Be(429);
+        result.Error.ApiCode.Should().Be("too_fast");
+        result.Error.RetryAfterSeconds.Should().Be(60);
         handler.CallCount.Should().Be(1);
+    }
+
+    [TestMethod]
+    public async Task ExternalTransportsRemainOwnedByCaller()
+    {
+        using var handler = new RecordingHandler { Response = """{"title":{"title_id":42}}""" };
+        using (var api = new Shinden(new Uri("https://fake.shinden.test/"),
+            new Auth { UserAgent = "test" }, handler: handler))
+            (await api.Titles.InfoAsync(42)).IsOk().Should().BeTrue();
+        handler.WasDisposed.Should().BeFalse();
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+        using (var api = new Shinden(new Uri("https://fake.shinden.test/"),
+            new Auth { UserAgent = "test" }, client: client))
+            (await api.Titles.InfoAsync(42)).IsOk().Should().BeTrue();
+        using var response = await client.GetAsync("https://fake.shinden.test/health");
+        response.IsSuccessStatusCode.Should().BeTrue();
+        handler.WasDisposed.Should().BeFalse();
     }
 
     [TestMethod]
@@ -112,7 +99,7 @@ public class ArchitectureTests
     {
         using var handler = new BlockingHandler();
         using var api = new Shinden(config => config
-            .WithUri("https://fake.shinden.test/api")
+            .WithUri("https://fake.shinden.test/")
             .WithRequestTimeout(TimeSpan.FromMilliseconds(10))
             .WithAuth(new Auth { Token = "token", UserAgent = "test-agent" })
             .Build(),
@@ -129,7 +116,7 @@ public class ArchitectureTests
     {
         using var handler = new SlowResponseBodyHandler();
         using var api = new Shinden(config => config
-            .WithUri("https://fake.shinden.test/api")
+            .WithUri("https://fake.shinden.test/")
             .WithRequestTimeout(TimeSpan.FromMilliseconds(10))
             .WithAuth(new Auth { Token = "token", UserAgent = "test-agent" })
             .Build(),
@@ -148,14 +135,12 @@ public class ArchitectureTests
         var logger = new CapturingLogger();
         using var handler = new EchoingErrorHandler();
         using var api = new Shinden(
-            new Uri("https://fake.shinden.test/api"),
+            new Uri("https://fake.shinden.test/"),
             new Auth { Token = secretToken, UserAgent = "test-agent" },
             logger,
             handler: handler);
 
-        // The handler below echoes the full request URL - including the api_key query
-        // parameter - back as the (failed) response body, to simulate a worst-case server
-        // that reflects request details in its error output.
+        // Servers may reflect authentication headers in error bodies.
         var result = await api.AskAsync(new Queries.Search.User("probe"));
 
         result.IsOk().Should().BeFalse();
@@ -169,7 +154,7 @@ public class ArchitectureTests
         internal bool RequestHadAcceptLanguage { get; private set; }
         internal bool RequestHadAccept { get; private set; }
         internal bool RequestHadUserAgent { get; private set; }
-        internal bool RequestHadMarmolade { get; private set; }
+        internal bool RequestHadAuthorization { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -177,7 +162,7 @@ public class ArchitectureTests
             RequestHadAcceptLanguage = request.Headers.Contains("Accept-Language");
             RequestHadAccept = request.Headers.Contains("Accept");
             RequestHadUserAgent = request.Headers.Contains("User-Agent");
-            RequestHadMarmolade = request.Headers.Contains("x-marmolade");
+            RequestHadAuthorization = request.Headers.Contains("Authorization");
             return Task.FromResult(Json("{}"));
         }
     }
@@ -194,16 +179,20 @@ public class ArchitectureTests
         }
 
         internal int CallCount { get; private set; }
+        internal List<string?> AuthorizationValues { get; } = new();
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var index = Math.Min(CallCount, _statuses.Count - 1);
             CallCount++;
-            return Task.FromResult(new HttpResponseMessage(_statuses[index])
+            AuthorizationValues.Add(request.Headers.Authorization?.ToString());
+            var response = new HttpResponseMessage(_statuses[index])
             {
                 Content = new StringContent(_content, Encoding.UTF8, "application/json")
-            });
+            };
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.Zero);
+            return Task.FromResult(response);
         }
     }
 
@@ -249,7 +238,7 @@ public class ArchitectureTests
             HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
             {
-                Content = new StringContent(request.RequestUri!.ToString(), Encoding.UTF8, "text/plain")
+                Content = new StringContent(request.Headers.Authorization!.ToString(), Encoding.UTF8, "text/plain")
             });
     }
 

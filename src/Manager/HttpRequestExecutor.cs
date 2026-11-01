@@ -1,6 +1,10 @@
 using System;
+using System.Diagnostics;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,11 +19,13 @@ internal sealed class HttpRequestExecutor : IDisposable
     private readonly int _maxRetries;
     private readonly TimeSpan _retryDelay;
     private readonly string _userAgent;
+    private readonly string _token;
+    private readonly bool _legacy;
     private readonly string _marmolade;
 
     internal HttpRequestExecutor(HttpMessageHandler handler, HttpClient client,
         TimeSpan timeout, int maxRetries, TimeSpan retryDelay,
-        Credentials.Auth auth)
+        Credentials.Auth auth, bool legacy = false)
     {
         if (handler is not null && client is not null)
             throw new ArgumentException("Specify either an HTTP handler or an HTTP client, not both.");
@@ -30,24 +36,25 @@ internal sealed class HttpRequestExecutor : IDisposable
         if (retryDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(retryDelay));
 
-        Cookies = new CookieContainer();
         _timeout = timeout;
         _maxRetries = maxRetries;
         _retryDelay = retryDelay;
         _userAgent = auth.UserAgent + $" (Shinden.NET/{Assembly.GetAssembly(typeof(HttpRequestExecutor)).GetName().Version})";
+        _token = auth.Token;
+        _legacy = legacy;
         _marmolade = auth.Marmolade;
 
         if (client is not null)
         {
             _client = client;
             _ownsClient = false;
-            UsesExternalTransport = true;
         }
         else
         {
             var actualHandler = handler ?? new HttpClientHandler
             {
-                CookieContainer = Cookies,
+                UseCookies = false,
+                AllowAutoRedirect = false,
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
             _client = new HttpClient(actualHandler, disposeHandler: handler is null)
@@ -58,18 +65,16 @@ internal sealed class HttpRequestExecutor : IDisposable
                 Timeout = Timeout.InfiniteTimeSpan
             };
             _ownsClient = true;
-            UsesExternalTransport = handler is not null;
         }
     }
 
-    internal CookieContainer Cookies { get; }
-    internal bool UsesExternalTransport { get; }
 
     internal async Task<TransportResponse> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(_timeout);
+        var elapsed = Stopwatch.StartNew();
 
         var retryCount = 0;
         while (true)
@@ -96,10 +101,12 @@ internal sealed class HttpRequestExecutor : IDisposable
                 timeoutSource.Token.ThrowIfCancellationRequested();
 
                 if (!ShouldRetry(attempt.Method, response.StatusCode, retryCount))
-                    return new TransportResponse(response.StatusCode, content);
+                    return Snapshot(response, content);
 
                 retryCount++;
                 var delay = GetRetryDelay(response, retryCount);
+                if (delay >= _timeout - elapsed.Elapsed)
+                    return Snapshot(response, content);
                 await Task.Delay(delay, timeoutSource.Token).ConfigureAwait(false);
             }
         }
@@ -117,8 +124,10 @@ internal sealed class HttpRequestExecutor : IDisposable
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
         request.Headers.TryAddWithoutValidation("User-Agent", _userAgent);
 
-        if (!string.IsNullOrEmpty(_marmolade))
+        if (_legacy && !string.IsNullOrEmpty(_marmolade))
             request.Headers.TryAddWithoutValidation(_marmolade, "marmolada");
+        if (!_legacy && !string.IsNullOrWhiteSpace(_token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
     }
 
     private static async Task<HttpRequestMessage> CloneAsync(HttpRequestMessage request)
@@ -183,17 +192,32 @@ internal sealed class HttpRequestExecutor : IDisposable
             _retryDelay.Ticks * multiplier,
             TimeSpan.FromSeconds(30).Ticks));
     }
+
+    private static int? RetryAfterSeconds(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        var delay = header?.Delta ?? (header?.Date - DateTimeOffset.UtcNow);
+        return delay.HasValue ? (int?)Math.Min(int.MaxValue, Math.Max(0, Math.Ceiling(delay.Value.TotalSeconds))) : null;
+    }
+
+    private static TransportResponse Snapshot(HttpResponseMessage response, string content)
+        => new(response.StatusCode, content, RetryAfterSeconds(response),
+            response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : Array.Empty<string>());
 }
 
 internal sealed class TransportResponse
 {
-    internal TransportResponse(HttpStatusCode statusCode, string content)
+    internal TransportResponse(HttpStatusCode statusCode, string content, int? retryAfterSeconds, IEnumerable<string> setCookieHeaders)
     {
         StatusCode = statusCode;
         Content = content;
+        RetryAfterSeconds = retryAfterSeconds;
+        SetCookieHeaders = setCookieHeaders.ToArray();
     }
 
     internal HttpStatusCode StatusCode { get; }
     internal string Content { get; }
+    internal int? RetryAfterSeconds { get; }
+    internal IReadOnlyList<string> SetCookieHeaders { get; }
     internal bool IsSuccessStatusCode => (int)StatusCode >= 200 && (int)StatusCode <= 299;
 }

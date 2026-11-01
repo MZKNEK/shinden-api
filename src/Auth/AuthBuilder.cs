@@ -42,8 +42,6 @@ public class AuthBuilder
 
     public Auth Build()
     {
-        if (string.IsNullOrWhiteSpace(_token))
-            throw new ArgumentException("The API token is required.", nameof(_token));
         if (string.IsNullOrWhiteSpace(_agent))
             throw new ArgumentException("The user agent is required.", nameof(_agent));
 
