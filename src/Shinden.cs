@@ -13,6 +13,11 @@ public class Shinden : IDisposable
 {
     private readonly RequestManager _manager;
     private readonly RequestManager _legacyManager;
+    private readonly object _configLock = new();
+    private volatile Config _config;
+
+    /// <summary>The configuration currently in use; changed by <see cref="Reconfigure(Config)"/>.</summary>
+    public Config Config => _config;
 
     /// <summary>Search operations.</summary>
     public SearchClient Search { get; }
@@ -36,39 +41,18 @@ public class Shinden : IDisposable
 
     public Shinden(Config config, ILogger<Shinden> logger = default!,
         HttpMessageHandler handler = default!, HttpClient client = default!)
-        : this((config ?? throw new ArgumentNullException(nameof(config))).Uri,
-            config.Auth, logger, handler, client,
-            new ShindenUrlResolver(config.Uri, config.SiteUri, config.ImageServerUri),
-            config.RequestTimeout,
-            config.MaxRetries, config.RetryDelay, config.LegacyUri, config.LegacyAuth,
-            config.SessionLifetime, config.Clock) {}
-
-    public Shinden(Uri uri, Auth auth, ILogger<Shinden> logger = default!,
-        HttpMessageHandler handler = default!, HttpClient client = default!)
-        : this(uri, auth, logger, handler, client, null,
-            Config.DefaultRequestTimeout,
-            2, Config.DefaultRetryDelay) {}
-
-    private Shinden(Uri uri, Auth auth, ILogger<Shinden> logger,
-        HttpMessageHandler handler, HttpClient client, ShindenUrlResolver urlResolver,
-        TimeSpan requestTimeout,
-        int maxRetries, TimeSpan retryDelay, Uri legacyUri = null, Auth legacyAuth = null,
-        TimeSpan sessionLifetime = default, Func<DateTimeOffset> clock = null)
     {
-        // UserAuth also preserves the historical PHP-only constructor configuration.
-        var phpOnly = legacyAuth is null && auth is UserAuth;
-        if (phpOnly) legacyAuth = auth;
-        var applicationAuth = phpOnly ? new Auth { UserAgent = auth.UserAgent } : auth;
-        _manager = new(phpOnly ? LegacyRequest<object>.NormalizeBaseUri(uri) : uri,
-            applicationAuth, logger, handler, client, urlResolver,
-            requestTimeout, maxRetries, retryDelay);
+        var target = Resolve(config ?? throw new ArgumentNullException(nameof(config)));
+        _manager = new(target.Uri, target.Auth, logger, handler, client, target.UrlResolver,
+            config.RequestTimeout, config.MaxRetries, config.RetryDelay);
         try
         {
-            _legacyManager = new(legacyUri ?? uri, legacyAuth ?? new Auth { UserAgent = auth.UserAgent },
-                logger, handler, client, urlResolver, requestTimeout, maxRetries, retryDelay,
-                legacy: true, sessionLifetime: sessionLifetime, clock: clock);
+            _legacyManager = new(target.LegacyUri, target.LegacyAuth, logger, handler, client, target.UrlResolver,
+                config.RequestTimeout, config.MaxRetries, config.RetryDelay,
+                legacy: true, sessionLifetime: config.SessionLifetime, clock: config.Clock);
         }
         catch { _manager.Dispose(); throw; }
+        _config = config;
         Search = new(_manager);
         Titles = new(_manager, _legacyManager);
         Users = new(_manager, _legacyManager);
@@ -76,6 +60,72 @@ public class Shinden : IDisposable
         Characters = new(_manager, _legacyManager);
         Episodes = new(_manager);
         PocketWaifu = new(_manager);
+    }
+
+    public Shinden(Uri uri, Auth auth, ILogger<Shinden> logger = default!,
+        HttpMessageHandler handler = default!, HttpClient client = default!)
+        : this(new Config
+        {
+            Uri = uri ?? throw new ArgumentNullException(nameof(uri)),
+            Auth = auth ?? throw new ArgumentNullException(nameof(auth))
+        }, logger, handler, client) {}
+
+    /// <summary>
+    /// Changes the configuration of this client in place. The builder starts from the current configuration,
+    /// so only the changed values need to be set, e.g. <c>b => b.WithMaxRetries(5).Build()</c>.
+    /// </summary>
+    public void Reconfigure(Func<ConfigBuilder, Config> configure)
+    {
+        if (configure is null)
+            throw new ArgumentNullException(nameof(configure));
+
+        lock (_configLock)
+            Reconfigure(configure(new ConfigBuilder(_config))
+                ?? throw new InvalidOperationException("The Shinden configuration cannot be null."));
+    }
+
+    /// <summary>
+    /// Changes the configuration of this client in place. Requests already in progress finish with the old settings.
+    /// The PHP session is kept unless the PHP credentials or address change. The HTTP client, handler and logger stay the same.
+    /// </summary>
+    public void Reconfigure(Config config)
+    {
+        if (config is null)
+            throw new ArgumentNullException(nameof(config));
+
+        lock (_configLock)
+        {
+            // Both states are validated before either is applied, so an invalid configuration changes nothing.
+            var target = Resolve(config);
+            var main = _manager.Prepare(target.Uri, target.Auth, target.UrlResolver,
+                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock);
+            var legacy = _legacyManager.Prepare(target.LegacyUri, target.LegacyAuth, target.UrlResolver,
+                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock);
+            _manager.Apply(main);
+            _legacyManager.Apply(legacy);
+            _config = config;
+        }
+    }
+
+    private sealed record ManagerTargets(Uri Uri, Auth Auth, Uri LegacyUri, Auth LegacyAuth, ShindenUrlResolver UrlResolver);
+
+    private static ManagerTargets Resolve(Config config)
+    {
+        if (config.Uri is null)
+            throw new ArgumentNullException(nameof(config), "An API URI is required.");
+        if (config.Auth is null)
+            throw new ArgumentNullException(nameof(config), "Authentication settings are required.");
+
+        var auth = config.Auth;
+        // UserAuth also preserves the historical PHP-only constructor configuration.
+        var phpOnly = config.LegacyAuth is null && auth is UserAuth;
+        var legacyAuth = phpOnly ? auth : config.LegacyAuth;
+        return new ManagerTargets(
+            phpOnly ? LegacyRequest<object>.NormalizeBaseUri(config.Uri) : config.Uri,
+            phpOnly ? new Auth { UserAgent = auth.UserAgent } : auth,
+            config.LegacyUri ?? config.Uri,
+            legacyAuth ?? new Auth { UserAgent = auth.UserAgent },
+            new ShindenUrlResolver(config.Uri, config.SiteUri, config.ImageServerUri));
     }
 
     public Task<ErrorOr<Models.ApiHealth>> HealthAsync(CancellationToken cancellationToken = default)

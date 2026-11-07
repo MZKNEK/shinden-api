@@ -79,6 +79,31 @@ Historical configurations using `UserAuth` through `WithAuth` or the
 In this configuration, new API requests run as a guest. To supply both keys,
 use separate `WithAuth` and `WithLegacyAuth` settings as shown above.
 
+### Changing the configuration at runtime
+
+`Reconfigure` changes the settings of an existing client, without creating a
+new `Shinden` object (useful with a singleton registered through DI). The
+builder starts from the current configuration, so set only what changes:
+
+```csharp
+shinden.Reconfigure(config => config
+    .WithAuth(auth => auth
+        .WithToken(newToken)
+        .WithUserAgent("MyApp/1.0")
+        .Build())
+    .WithMaxRetries(5)
+    .Build());
+
+var current = shinden.Config;
+```
+
+A complete `Config` can also be passed with `Reconfigure(config)`. The new
+configuration is validated first; if it is invalid, an exception is thrown and
+nothing changes. Requests already in progress finish with the old settings.
+The PHP session is kept unless the PHP credentials, key or address change; then
+the next PHP request logs in again. The HTTP client, handler and logger passed
+to the constructor stay the same.
+
 ## Clients
 
 | Client | Operations |

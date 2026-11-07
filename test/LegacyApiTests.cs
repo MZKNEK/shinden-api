@@ -110,6 +110,44 @@ public class LegacyApiTests
     }
 
     [TestMethod]
+    public async Task ReconfigureKeepsPhpSessionWhenCredentialsDoNotChange()
+    {
+        using var handler = new LegacyHandler();
+        using var api = CreateApi(handler, user: true);
+        (await api.Users.ChangeTitleStatusAsync(42, 11, TitleListStatus.Completed)).IsOk().Should().BeTrue();
+
+        api.Reconfigure(builder => builder.WithMaxRetries(0).WithRequestTimeout(TimeSpan.FromSeconds(5)).Build());
+
+        api.Users.IsValidSession().Should().BeTrue();
+        (await api.Users.ChangeTitleStatusAsync(42, 11, TitleListStatus.Completed)).IsOk().Should().BeTrue();
+        handler.Requests.Count(r => r.Uri.AbsolutePath == "/api/user/login").Should().Be(1);
+    }
+
+    [TestMethod]
+    public async Task ReconfigureWithNewPhpCredentialsDropsSessionAndLogsInAgain()
+    {
+        using var handler = new LegacyHandler();
+        var logger = new SecretLogger();
+        using var api = CreateApi(handler, user: true, logger: logger);
+        (await api.Users.ChangeTitleStatusAsync(42, 11, TitleListStatus.Completed)).IsOk().Should().BeTrue();
+
+        api.Reconfigure(builder => builder.WithLegacyAuth(new UserAuth
+        {
+            Token = "new-old-key", UserAgent = "php-agent", Nickname = "other", Password = "other-password", Marmolade = "x-legacy"
+        }).Build());
+
+        api.Users.IsValidSession().Should().BeFalse();
+        (await api.Users.ChangeTitleStatusAsync(42, 11, TitleListStatus.Completed)).IsOk().Should().BeTrue();
+        var logins = handler.Requests.Where(r => r.Uri.AbsolutePath == "/api/user/login").ToArray();
+        logins.Should().HaveCount(2);
+        logins[1].Body.Should().Be("username=other&password=other-password");
+        logins[1].Uri.Query.Should().Contain("api_key=new-old-key");
+        // Secrets of the previous configuration stay redacted as well.
+        logger.Messages.Should().NotContain(message => message.Contains("secret&password") || message.Contains("new-old-key")
+            || message.Contains("other-password"));
+    }
+
+    [TestMethod]
     public async Task LoginUsesReturnedCookieNamesAndKeepsThemOffNewApiRequests()
     {
         using var handler = new LegacyHandler

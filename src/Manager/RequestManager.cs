@@ -12,16 +12,25 @@ namespace ShindenAPI;
 
 internal class RequestManager : IDisposable
 {
-    private readonly Uri _baseUri;
-    private readonly Credentials.Auth _auth;
+    /// <summary>
+    /// Everything that can change through <see cref="Shinden.Reconfigure(Config)"/>. Immutable: each request
+    /// reads it once, so a request that is already running finishes with the settings it started with.
+    /// </summary>
+    internal sealed record State(Uri BaseUri, Credentials.Auth Auth, Queries.User.Login UserLoginReq,
+        ShindenUrlResolver UrlResolver, TimeSpan SessionLifetime, Func<DateTimeOffset> Clock, ExecutorSettings Executor)
+    {
+        /// <summary>Changes whenever the credentials or address change; older PHP sessions are then ignored.</summary>
+        internal int CredentialsVersion { get; init; }
+    }
+
     private readonly bool _legacy;
-    private readonly TimeSpan _sessionLifetime;
-    private readonly Func<DateTimeOffset> _clock;
     private readonly SemaphoreSlim _loginLock = new(1, 1);
-    private UserSession _session;
-    private readonly Queries.User.Login _userLoginReq;
+    private readonly object _stateLock = new();
+    private volatile State _state;
+    private volatile UserSession _session;
+    // Secrets of earlier configurations, still redacted from logs of requests that started before a change.
+    private volatile string[] _retiredSecrets = Array.Empty<string>();
     private readonly ILogger<Shinden> _logger;
-    private readonly ShindenUrlResolver _urlResolver;
     private readonly HttpRequestExecutor _executor;
 
     private int _disposed;
@@ -34,6 +43,17 @@ internal class RequestManager : IDisposable
         TimeSpan retryDelay = default, bool legacy = false,
         TimeSpan sessionLifetime = default, Func<DateTimeOffset> clock = null)
     {
+        _legacy = legacy;
+        _logger = logger;
+        _state = Prepare(baseUri, auth, urlResolver, requestTimeout, maxRetries, retryDelay, sessionLifetime, clock);
+        _executor = new HttpRequestExecutor(handler, client, legacy);
+    }
+
+    /// <summary>Validates settings and builds a new state without changing this manager.</summary>
+    internal State Prepare(Uri baseUri, Credentials.Auth auth, ShindenUrlResolver urlResolver,
+        TimeSpan requestTimeout, int maxRetries, TimeSpan retryDelay,
+        TimeSpan sessionLifetime, Func<DateTimeOffset> clock)
+    {
         if (baseUri is null)
             throw new ArgumentNullException(nameof(baseUri));
         if (!baseUri.IsAbsoluteUri)
@@ -41,47 +61,68 @@ internal class RequestManager : IDisposable
         if (auth is null)
             throw new ArgumentNullException(nameof(auth));
         ValidateAuth(auth);
-        _auth = auth;
-        _legacy = legacy;
-        _sessionLifetime = sessionLifetime > TimeSpan.Zero ? sessionLifetime : Config.DefaultSessionLifetime;
-        _clock = clock ?? Config.DefaultClock;
-        if (legacy && auth is Credentials.UserAuth userAuth)
-            _userLoginReq = new Queries.User.Login(userAuth);
-        _logger = logger;
-        _baseUri = legacy ? Queries.LegacyRequest<object>.NormalizeBaseUri(baseUri) : baseUri;
-        _urlResolver = urlResolver ?? new ShindenUrlResolver(baseUri);
-        _executor = new HttpRequestExecutor(handler, client,
-            requestTimeout > TimeSpan.Zero ? requestTimeout : Config.DefaultRequestTimeout,
-            maxRetries, retryDelay, auth, legacy);
 
+        return new State(
+            _legacy ? Queries.LegacyRequest<object>.NormalizeBaseUri(baseUri) : baseUri,
+            auth,
+            _legacy && auth is Credentials.UserAuth userAuth ? new Queries.User.Login(userAuth) : null,
+            urlResolver ?? new ShindenUrlResolver(baseUri),
+            sessionLifetime > TimeSpan.Zero ? sessionLifetime : Config.DefaultSessionLifetime,
+            clock ?? Config.DefaultClock,
+            new ExecutorSettings(requestTimeout > TimeSpan.Zero ? requestTimeout : Config.DefaultRequestTimeout,
+                maxRetries, retryDelay, auth));
+    }
+
+    /// <summary>Switches to a state from <see cref="Prepare"/>. The PHP session is kept only if the credentials did not change.</summary>
+    internal void Apply(State next)
+    {
+        ThrowIfDisposed();
+        if (next is null) throw new ArgumentNullException(nameof(next));
+        lock (_stateLock)
+        {
+            var current = _state;
+            var sameCredentials = current.BaseUri == next.BaseUri
+                && current.Auth.Token == next.Auth.Token
+                && (current.Auth as Credentials.UserAuth)?.Nickname == (next.Auth as Credentials.UserAuth)?.Nickname
+                && (current.Auth as Credentials.UserAuth)?.Password == (next.Auth as Credentials.UserAuth)?.Password;
+
+            var retired = new List<string>(_retiredSecrets) { current.Auth.Token, (current.Auth as Credentials.UserAuth)?.Password };
+            if (!sameCredentials && _session is { } old)
+                retired.AddRange(new[] { old.Id, old.Name, old.Hash }.Concat(old.CookieSecrets));
+            _retiredSecrets = retired.Where(secret => !string.IsNullOrEmpty(secret)).Distinct().ToArray();
+
+            _state = next with { CredentialsVersion = sameCredentials ? current.CredentialsVersion : current.CredentialsVersion + 1 };
+            if (!sameCredentials)
+                _session = null;
+        }
     }
 
     internal Task<ErrorOr<TReturn>> MakeQueryAsync<TReturn>(Queries.Request<TReturn> request,
         CancellationToken cancellationToken = default) where TReturn : class
-        => MakeQueryCoreAsync(request, false, cancellationToken);
+        => MakeQueryCoreAsync(request, false, cancellationToken, _state);
 
     private async Task<ErrorOr<TReturn>> MakeQueryCoreAsync<TReturn>(Queries.Request<TReturn> request,
-        bool skipSession, CancellationToken cancellationToken) where TReturn : class
+        bool skipSession, CancellationToken cancellationToken, State state) where TReturn : class
     {
         ThrowIfDisposed();
         if (request is null) throw new ArgumentNullException(nameof(request));
 
-        if (_legacy && string.IsNullOrWhiteSpace(_auth.Token))
+        if (_legacy && string.IsNullOrWhiteSpace(state.Auth.Token))
         {
             Log(LogLevel.Error, "[{query}]: the PHP API key is not configured; set WithLegacyAuth.", request.GetType().FullName);
             return ErrorOr<TReturn>.FromError(Error.FromMessage(ErrorType.Configuration, 401,
                 "The PHP API key is not configured. Set WithLegacyAuth separately from the new API token."));
         }
-        if (_legacy && !skipSession && _userLoginReq is not null)
+        if (_legacy && !skipSession && state.UserLoginReq is not null)
         {
-            var login = await LoginAsUserAsync(cancellationToken).ConfigureAwait(false);
+            var login = await LoginAsUserAsync(state, cancellationToken).ConfigureAwait(false);
             if (!login.IsOk()) return ErrorOr<TReturn>.FromError(login.Error);
         }
 
         HttpRequestMessage body;
         try
         {
-            body = request.Build(_baseUri, _auth.Token);
+            body = request.Build(state.BaseUri, state.Auth.Token);
         }
         catch (Exception ex)
         {
@@ -96,13 +137,13 @@ internal class RequestManager : IDisposable
 
             if (request.RequireHttps() && body.RequestUri.Scheme != Uri.UriSchemeHttps)
                 body.RequestUri = new UriBuilder(body.RequestUri) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri;
-            if (_legacy && !skipSession && _session is not null)
+            if (_legacy && !skipSession && CurrentSession(state) is { } session)
             {
-                var cookie = _session.GetCookieHeader(body.RequestUri);
+                var cookie = session.GetCookieHeader(body.RequestUri);
                 if (!string.IsNullOrEmpty(cookie)) body.Headers.TryAddWithoutValidation("Cookie", cookie);
             }
 
-            var response = await _executor.SendAsync(body, cancellationToken).ConfigureAwait(false);
+            var response = await _executor.SendAsync(body, state.Executor, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 Log(LogLevel.Error, "[{method}]: {uri} | {code} | {time} ms | {error}", body.Method, body.RequestUri.LocalPath,
@@ -133,7 +174,7 @@ internal class RequestManager : IDisposable
                 return ErrorOr<TReturn>.FromError(error);
             }
 
-            ShindenUrlResolver.Apply(obj, _urlResolver);
+            ShindenUrlResolver.Apply(obj, state.UrlResolver);
             if (_legacy && skipSession && obj is Models.LoginResult login)
                 login.SetCookieHeaders = response.SetCookieHeaders;
 
@@ -202,9 +243,12 @@ internal class RequestManager : IDisposable
     private object[] RedactArgs(object[] args)
     {
         if (args is null) return args;
-        var secrets = new List<string> { _auth.Token, (_auth as Credentials.UserAuth)?.Password,
-            _session?.Id, _session?.Name, _session?.Hash };
-        if (_session is not null) secrets.AddRange(_session.CookieSecrets);
+        var state = _state;
+        var session = _session;
+        var secrets = new List<string> { state.Auth.Token, (state.Auth as Credentials.UserAuth)?.Password,
+            session?.Id, session?.Name, session?.Hash };
+        if (session is not null) secrets.AddRange(session.CookieSecrets);
+        secrets.AddRange(_retiredSecrets);
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] is not string value) continue;
@@ -218,23 +262,32 @@ internal class RequestManager : IDisposable
         return args;
     }
 
+    // A session belongs to the credentials it was created with; after they change it is ignored.
+    private UserSession CurrentSession(State state)
+        => _session is { } session && session.CredentialsVersion == state.CredentialsVersion ? session : null;
+
+    private UserSession ValidSession(State state)
+        => CurrentSession(state) is { } session && session.IsValid(state.Clock()) ? session : null;
+
     internal bool IsValidUserSession()
     {
         ThrowIfDisposed();
-        if (_userLoginReq is null)
-            return false;
-
-        return _session is not null && _session.IsValid(_clock());
+        var state = _state;
+        return state.UserLoginReq is not null && ValidSession(state) is not null;
     }
 
     internal async Task<Models.UserSearchResult> ForceLoginAsync(CancellationToken cancellationToken = default)
         => (await LoginAsUserAsync(cancellationToken).ConfigureAwait(false)).Get();
 
-    internal async Task<ErrorOr<Models.UserSearchResult>> LoginAsUserAsync(
+    internal Task<ErrorOr<Models.UserSearchResult>> LoginAsUserAsync(
         CancellationToken cancellationToken = default)
+        => LoginAsUserAsync(_state, cancellationToken);
+
+    private async Task<ErrorOr<Models.UserSearchResult>> LoginAsUserAsync(
+        State state, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        if (_userLoginReq is null)
+        if (state.UserLoginReq is null)
         {
             Log(LogLevel.Error, "[login]: user credentials are not configured.");
             return ErrorOr<Models.UserSearchResult>.FromError(
@@ -242,16 +295,16 @@ internal class RequestManager : IDisposable
                     "User credentials are not configured."));
         }
 
-        if (_session is not null && _session.IsValid(_clock()))
-            return ErrorOr<Models.UserSearchResult>.From(_session.User);
+        if (ValidSession(state) is { } valid)
+            return ErrorOr<Models.UserSearchResult>.From(valid.User);
 
         await _loginLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_session is not null && _session.IsValid(_clock()))
-                return ErrorOr<Models.UserSearchResult>.From(_session.User);
+            if (ValidSession(state) is { } current)
+                return ErrorOr<Models.UserSearchResult>.From(current.User);
 
-            return await LoginAsUser(cancellationToken).ConfigureAwait(false);
+            return await LoginAsUser(state, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -259,9 +312,9 @@ internal class RequestManager : IDisposable
         }
     }
 
-    private async Task<ErrorOr<Models.UserSearchResult>> LoginAsUser(CancellationToken cancellationToken)
+    private async Task<ErrorOr<Models.UserSearchResult>> LoginAsUser(State state, CancellationToken cancellationToken)
     {
-        var res = await MakeQueryCoreAsync(_userLoginReq, true, cancellationToken).ConfigureAwait(false);
+        var res = await MakeQueryCoreAsync(state.UserLoginReq, true, cancellationToken, state).ConfigureAwait(false);
         if (!res.IsOk())
             return ErrorOr<Models.UserSearchResult>.FromError(res.Error);
 
@@ -279,7 +332,7 @@ internal class RequestManager : IDisposable
         if (val.SetCookieHeaders.Count > 0)
         {
             cookies = new CookieContainer();
-            using var loginRequest = _userLoginReq.Build(_baseUri, _auth.Token);
+            using var loginRequest = state.UserLoginReq.Build(state.BaseUri, state.Auth.Token);
             var loginUri = loginRequest.RequestUri.Scheme == Uri.UriSchemeHttps ? loginRequest.RequestUri
                 : new UriBuilder(loginRequest.RequestUri) { Scheme = Uri.UriSchemeHttps, Port = -1 }.Uri;
             try
@@ -297,9 +350,9 @@ internal class RequestManager : IDisposable
         var cookieSecrets = val.SetCookieHeaders.Select(header => header.Split(';')[0].Split(new[] { '=' }, 2))
             .Where(parts => parts.Length == 2).Select(parts => parts[1].Trim().Trim('"')).ToArray();
         _session = new UserSession(val.Session.Id, val.Session.Name, val.Hash, val.User,
-            _clock(), _sessionLifetime, cookies, cookieSecrets);
+            state.Clock(), state.SessionLifetime, cookies, cookieSecrets, state.CredentialsVersion);
 
-        ShindenUrlResolver.Apply(val.User, _urlResolver);
+        ShindenUrlResolver.Apply(val.User, state.UrlResolver);
 
         Log(LogLevel.Information, "Logged in as {user} | {id}", val.User.Name, val.User.Id);
         return ErrorOr<Models.UserSearchResult>.From(val.User);

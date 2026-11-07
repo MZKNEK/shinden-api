@@ -18,6 +18,28 @@ public class ConfigBuilder
     private int _maxRetries = 2;
     private TimeSpan _retryDelay = Config.DefaultRetryDelay;
 
+    /// <summary>Creates an empty builder.</summary>
+    public ConfigBuilder() { }
+
+    /// <summary>Creates a builder pre-filled with an existing configuration, so only the changed values need to be set.</summary>
+    public ConfigBuilder(Config config)
+    {
+        if (config is null)
+            throw new ArgumentNullException(nameof(config));
+
+        _uri = config.Uri;
+        _auth = config.Auth;
+        _legacyAuth = config.LegacyAuth;
+        _legacyUri = config.LegacyUri;
+        _sessionLifetime = config.SessionLifetime;
+        _clock = config.Clock;
+        _siteUri = config.SiteUri;
+        _imageServerUri = config.ImageServerUri;
+        _requestTimeout = config.RequestTimeout;
+        _maxRetries = config.MaxRetries;
+        _retryDelay = config.RetryDelay;
+    }
+
     /// <summary>Sets the API base URI.</summary>
     public ConfigBuilder WithUri(string uri)
     {

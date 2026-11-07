@@ -11,25 +11,11 @@ using System.Threading.Tasks;
 
 namespace ShindenAPI;
 
-internal sealed class HttpRequestExecutor : IDisposable
+/// <summary>Per-request transport settings; immutable so a request keeps one snapshot from start to finish.</summary>
+internal sealed class ExecutorSettings
 {
-    private readonly HttpClient _client;
-    private readonly bool _ownsClient;
-    private readonly TimeSpan _timeout;
-    private readonly int _maxRetries;
-    private readonly TimeSpan _retryDelay;
-    private readonly string _userAgent;
-    private readonly string _token;
-    private readonly bool _legacy;
-    private readonly string _marmolade;
-    private const int MaxRedirects = 10;
-
-    internal HttpRequestExecutor(HttpMessageHandler handler, HttpClient client,
-        TimeSpan timeout, int maxRetries, TimeSpan retryDelay,
-        Credentials.Auth auth, bool legacy = false)
+    internal ExecutorSettings(TimeSpan timeout, int maxRetries, TimeSpan retryDelay, Credentials.Auth auth)
     {
-        if (handler is not null && client is not null)
-            throw new ArgumentException("Specify either an HTTP handler or an HTTP client, not both.");
         if (timeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout));
         if (maxRetries < 0)
@@ -37,13 +23,35 @@ internal sealed class HttpRequestExecutor : IDisposable
         if (retryDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(retryDelay));
 
-        _timeout = timeout;
-        _maxRetries = maxRetries;
-        _retryDelay = retryDelay;
-        _userAgent = auth.UserAgent + $" (Shinden.NET/{Assembly.GetAssembly(typeof(HttpRequestExecutor)).GetName().Version})";
-        _token = auth.Token;
+        Timeout = timeout;
+        MaxRetries = maxRetries;
+        RetryDelay = retryDelay;
+        UserAgent = auth.UserAgent + $" (Shinden.NET/{Assembly.GetAssembly(typeof(HttpRequestExecutor)).GetName().Version})";
+        Token = auth.Token;
+        Marmolade = auth.Marmolade;
+    }
+
+    internal TimeSpan Timeout { get; }
+    internal int MaxRetries { get; }
+    internal TimeSpan RetryDelay { get; }
+    internal string UserAgent { get; }
+    internal string Token { get; }
+    internal string Marmolade { get; }
+}
+
+internal sealed class HttpRequestExecutor : IDisposable
+{
+    private readonly HttpClient _client;
+    private readonly bool _ownsClient;
+    private readonly bool _legacy;
+    private const int MaxRedirects = 10;
+
+    internal HttpRequestExecutor(HttpMessageHandler handler, HttpClient client, bool legacy = false)
+    {
+        if (handler is not null && client is not null)
+            throw new ArgumentException("Specify either an HTTP handler or an HTTP client, not both.");
+
         _legacy = legacy;
-        _marmolade = auth.Marmolade;
 
         if (client is not null)
         {
@@ -72,10 +80,10 @@ internal sealed class HttpRequestExecutor : IDisposable
 
 
     internal async Task<TransportResponse> SendAsync(
-        HttpRequestMessage request, CancellationToken cancellationToken)
+        HttpRequestMessage request, ExecutorSettings settings, CancellationToken cancellationToken)
     {
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(_timeout);
+        timeoutSource.CancelAfter(settings.Timeout);
         var elapsed = Stopwatch.StartNew();
 
         var current = request;
@@ -90,7 +98,7 @@ internal sealed class HttpRequestExecutor : IDisposable
             while (true)
             {
                 using var attempt = await CloneAsync(current, copyHeaders: sameSite).ConfigureAwait(false);
-                AddHeaders(attempt, sameSite);
+                AddHeaders(attempt, settings, sameSite);
 
                 HttpResponseMessage response;
                 try
@@ -98,10 +106,10 @@ internal sealed class HttpRequestExecutor : IDisposable
                     response = await _client.SendAsync(
                         attempt, HttpCompletionOption.ResponseContentRead, timeoutSource.Token).ConfigureAwait(false);
                 }
-                catch (HttpRequestException) when (IsRetryableMethod(attempt.Method) && retryCount < _maxRetries)
+                catch (HttpRequestException) when (IsRetryableMethod(attempt.Method) && retryCount < settings.MaxRetries)
                 {
                     retryCount++;
-                    await Task.Delay(GetRetryDelay(retryCount), timeoutSource.Token).ConfigureAwait(false);
+                    await Task.Delay(GetRetryDelay(settings, retryCount), timeoutSource.Token).ConfigureAwait(false);
                     continue;
                 }
 
@@ -126,12 +134,12 @@ internal sealed class HttpRequestExecutor : IDisposable
                         continue;
                     }
 
-                    if (!ShouldRetry(attempt.Method, response.StatusCode, retryCount))
+                    if (!ShouldRetry(attempt.Method, response.StatusCode, retryCount, settings.MaxRetries))
                         return Snapshot(response, content, setCookieHeaders);
 
                     retryCount++;
-                    var delay = GetRetryDelay(response, retryCount);
-                    if (delay >= _timeout - elapsed.Elapsed)
+                    var delay = GetRetryDelay(settings, response, retryCount);
+                    if (delay >= settings.Timeout - elapsed.Elapsed)
                         return Snapshot(response, content, setCookieHeaders);
                     await Task.Delay(delay, timeoutSource.Token).ConfigureAwait(false);
                 }
@@ -150,18 +158,18 @@ internal sealed class HttpRequestExecutor : IDisposable
             _client.Dispose();
     }
 
-    private void AddHeaders(HttpRequestMessage request, bool withCredentials)
+    private void AddHeaders(HttpRequestMessage request, ExecutorSettings settings, bool withCredentials)
     {
         request.Headers.TryAddWithoutValidation("Accept-Language", "pl");
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
-        request.Headers.TryAddWithoutValidation("User-Agent", _userAgent);
+        request.Headers.TryAddWithoutValidation("User-Agent", settings.UserAgent);
 
         if (!withCredentials)
             return;
-        if (_legacy && !string.IsNullOrEmpty(_marmolade))
-            request.Headers.TryAddWithoutValidation(_marmolade, "marmolada");
-        if (!_legacy && !string.IsNullOrWhiteSpace(_token))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+        if (_legacy && !string.IsNullOrEmpty(settings.Marmolade))
+            request.Headers.TryAddWithoutValidation(settings.Marmolade, "marmolada");
+        if (!_legacy && !string.IsNullOrWhiteSpace(settings.Token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.Token);
     }
 
     private static Uri GetRedirectTarget(Uri requestUri, HttpResponseMessage response)
@@ -227,9 +235,9 @@ internal sealed class HttpRequestExecutor : IDisposable
         return clone;
     }
 
-    private bool ShouldRetry(HttpMethod method, HttpStatusCode statusCode, int retryCount)
+    private static bool ShouldRetry(HttpMethod method, HttpStatusCode statusCode, int retryCount, int maxRetries)
     {
-        if (retryCount >= _maxRetries)
+        if (retryCount >= maxRetries)
             return false;
         if (!IsRetryableMethod(method))
             return false;
@@ -242,15 +250,15 @@ internal sealed class HttpRequestExecutor : IDisposable
     private static bool IsRetryableMethod(HttpMethod method)
         => method == HttpMethod.Get || method == HttpMethod.Head || method == HttpMethod.Options;
 
-    private TimeSpan GetRetryDelay(int retryCount)
+    private static TimeSpan GetRetryDelay(ExecutorSettings settings, int retryCount)
     {
         var multiplier = Math.Min(retryCount, 8);
         return TimeSpan.FromTicks(Math.Min(
-            _retryDelay.Ticks * multiplier,
+            settings.RetryDelay.Ticks * multiplier,
             TimeSpan.FromSeconds(30).Ticks));
     }
 
-    private TimeSpan GetRetryDelay(HttpResponseMessage response, int retryCount)
+    private static TimeSpan GetRetryDelay(ExecutorSettings settings, HttpResponseMessage response, int retryCount)
     {
         var retryAfter = response.Headers.RetryAfter;
         if (retryAfter is not null)
@@ -267,10 +275,7 @@ internal sealed class HttpRequestExecutor : IDisposable
             }
         }
 
-        var multiplier = Math.Min(retryCount, 8);
-        return TimeSpan.FromTicks(Math.Min(
-            _retryDelay.Ticks * multiplier,
-            TimeSpan.FromSeconds(30).Ticks));
+        return GetRetryDelay(settings, retryCount);
     }
 
     private static int? RetryAfterSeconds(HttpResponseMessage response)

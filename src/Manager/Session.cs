@@ -10,8 +10,10 @@ internal class UserSession
     private readonly CookieContainer _cookies;
 
     internal UserSession(string id, string name, string hash, UserSearchResult user,
-        DateTimeOffset created, TimeSpan lifetime, CookieContainer cookies = null, string[] cookieSecrets = null)
+        DateTimeOffset created, TimeSpan lifetime, CookieContainer cookies = null, string[] cookieSecrets = null,
+        int credentialsVersion = 0)
     {
+        CredentialsVersion = credentialsVersion;
         Id = id;
         Name = name;
         Hash = hash;
@@ -30,6 +32,7 @@ internal class UserSession
     internal DateTime Expires => Created.Add(_lifetime).UtcDateTime;
 
     internal UserSearchResult User { get; }
+    internal int CredentialsVersion { get; }
     internal string[] CookieSecrets { get; }
 
     internal string GetCookieHeader(Uri uri)
