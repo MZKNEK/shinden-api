@@ -30,9 +30,23 @@ public class LiveRunnerTests
         bothModes.Should().Throw<SettingsException>();
         LiveProgram.ParseArguments(new[] { "--run-live" }).Run.Should().BeTrue();
         LiveProgram.ParseArguments(new[] { "--validate" }).Run.Should().BeFalse();
+        LiveProgram.ParseArguments(new[] { "--run-live", "--only", "compat.current-season" }).Only.Should().Be("compat.current-season");
+        ((Action)(() => LiveProgram.ParseArguments(new[] { "--run-live", "--only" }))).Should().Throw<SettingsException>();
         LiveProgram.IsCi(name => name == "CI" ? "true" : null).Should().BeTrue();
         LiveProgram.IsCi(name => name == "GITHUB_ACTIONS" ? "true" : null).Should().BeTrue();
         LiveProgram.IsCi(name => name == "CI" ? "false" : null).Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task OnlyFilterSendsRequestsForMatchingChecksOnly()
+    {
+        var settings = Settings(login: true);
+        using var handler = new LiveFakeHandler();
+        var runner = new LiveRunner(settings, TextWriter.Null, handler, _ => Task.CompletedTask, only: "compat.current-season");
+        await runner.RunAsync(CancellationToken.None);
+        runner.Report.Failed.Should().Be(0, JsonConvert.SerializeObject(runner.Report));
+        runner.Report.Passed.Should().Be(2);
+        handler.Requests.Should().HaveCount(2).And.OnlyContain(request => request.Path == "/compat/php-api/anime/current-season");
     }
 
     [TestMethod]
@@ -387,7 +401,7 @@ public class LiveRunnerTests
                 "/v1/search/staff" => """[{"staff_id":6,"first_name":"Person"}]""",
                 "/v1/search/tags" => """[{"tag_id":1,"tag_name":"Tag"}]""",
                 "/v1/search/titles/by-ids" => """{"items":[{"id":11,"title":"Anime"},{"id":12,"title":"Manga"}]}""",
-                "/v1/search/browse/anime" or "/v1/search/browse/manga" or "/v1/search/season/2026/autumn" => """{"total":1,"items":[{"title_id":11}]}""",
+                "/v1/search/browse/anime" or "/v1/search/browse/manga" or "/v1/search/season/2026/fall" => """{"total":1,"items":[{"title_id":11}]}""",
                 "/v1/catalog/anime/11" => """{"id":11,"title":"Anime"}""",
                 "/v1/catalog/characters/5" => """{"id":5,"firstName":"Name"}""",
                 "/v1/users/42/stats" => """{"userId":42,"anime":{},"manga":{}}""",
@@ -398,7 +412,9 @@ public class LiveRunnerTests
                 "/compat/php-api/title/11/episodes" => """{"episodes":[],"connected_episodes":[]}""",
                 "/compat/php-api/title/11/characters" => """{"relations":[]}""",
                 "/compat/php-api/episode/new" => """{"lastonline":[]}""",
-                "/compat/php-api/anime/current-season" => """{"titles":[11],"characters":["5"]}""",
+                "/compat/php-api/anime/current-season" => request.RequestUri.Query.Contains("season=summer")
+                    ? """{"season":{"year":2026,"season":"summer"},"updated_at":"2026-11-07 12:00:00","titles":[10],"characters":["4"],"character_titles":[{"character_id":4,"title_id":10}]}"""
+                    : """{"season":{"year":2026,"season":"fall"},"updated_at":"2026-11-07 12:00:00","titles":[11],"characters":["5"],"character_titles":[{"character_id":5,"title_id":11}]}""",
                 "/compat/php-api/character/flat-list" or "/compat/php-api/character/flat-list-anime" or "/api/character/flat-list-book" => """[{"c":5,"f":"Name","n":1}]""",
                 "/api/episode/11/range" => """{"min_no":"1","max_no":"12"}""",
                 "/api/title/11/recommendations" => """{"recommendations":[]}""",

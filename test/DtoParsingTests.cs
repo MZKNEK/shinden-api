@@ -64,8 +64,8 @@ public class DtoParsingTests
     }
 
     [DataTestMethod]
-    [DataRow("""[{"id":11,"title":"Title","cover":null,"episodes":12,"season":{"year":2026,"season":"autumn"}}]""")]
-    [DataRow("""{"items":[{"id":11,"title":"Title","cover":null,"episodes":12,"season":{"year":2026,"season":"autumn"}}]}""")]
+    [DataRow("""[{"id":11,"title":"Title","cover":null,"episodes":12,"season":{"year":2026,"season":"fall"}}]""")]
+    [DataRow("""{"items":[{"id":11,"title":"Title","cover":null,"episodes":12,"season":{"year":2026,"season":"fall"}}]}""")]
     public async Task TitlesByIdsAcceptsArrayAndItemsWrapper(string response)
     {
         using var handler = new RecordingHandler { Response = response };

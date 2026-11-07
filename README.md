@@ -123,7 +123,7 @@ var browse = await shinden.Search.AnimeAsync(options => options
     .Build());
 
 var season = await shinden.Search.SeasonAsync(
-    2026, ShindenAPI.Queries.V1.Season.Autumn);
+    2026, ShindenAPI.Queries.V1.Season.Fall);
 ```
 
 Browse now uses GET query parameters: `page` (starting at 1), `limit` and PHP

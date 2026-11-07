@@ -71,7 +71,7 @@ internal sealed class LiveSettings
         foreach (var query in new[] { Data.UserQuery, Data.AnimeQuery, Data.MangaQuery, Data.CharacterQuery, Data.StaffQuery, Data.TagQuery })
             Need(!string.IsNullOrWhiteSpace(query) && query.Length is >= 2 and <= 200, "Search queries in data must contain between 2 and 200 characters.");
         Need(Data.SeasonYear is >= 1900 and <= 2100, "Invalid data.seasonYear.");
-        Need(Enum.TryParse<Season>(Data.Season, true, out var season) && Enum.IsDefined(typeof(Season), season), "data.season must be Winter, Spring, Summer or Autumn.");
+        Need(Enum.TryParse<Season>(Data.Season, true, out var season) && Enum.IsDefined(typeof(Season), season), "data.season must be Winter, Spring, Summer or Fall.");
 
         if (!Writes.Enabled)
         {
@@ -183,7 +183,7 @@ internal sealed class ResourceSettings
     public string StaffQuery { get; set; } = "Marina";
     public string TagQuery { get; set; } = "akcja";
     public int SeasonYear { get; set; } = 2026;
-    public string Season { get; set; } = "Autumn";
+    public string Season { get; set; } = "Fall";
 }
 internal sealed class WriteSettings
 {

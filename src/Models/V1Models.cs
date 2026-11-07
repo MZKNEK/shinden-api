@@ -8,7 +8,18 @@ namespace ShindenAPI.Models;
 public class TitleByIdSeason
 {
     [JsonProperty("year")] public long Year { get; init; }
+    /// <summary>Season name exactly as sent by the API (for example "fall").</summary>
     [JsonProperty("season")] public string Season { get; init; }
+
+    /// <summary>The season as an enum; "fall" (and "autumn") map to Fall, unknown names to null.</summary>
+    [JsonIgnore] public Queries.V1.Season? Value => Season?.Trim().ToLowerInvariant() switch
+    {
+        "winter" => Queries.V1.Season.Winter,
+        "spring" => Queries.V1.Season.Spring,
+        "summer" => Queries.V1.Season.Summer,
+        "fall" or "autumn" => Queries.V1.Season.Fall,
+        _ => null
+    };
 }
 
 public class TitleById

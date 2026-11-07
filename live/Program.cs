@@ -13,6 +13,9 @@ internal static class Program
     Read checks and optional PHP login:
       dotnet run --project live/Shinden.NET.LiveTests.csproj -- --run-live --config live/live-settings.local.json
 
+    Only checks whose name starts with a prefix (others are reported as SKIP and send no requests):
+      dotnet run --project live/Shinden.NET.LiveTests.csproj -- --run-live --only compat.current-season --config live/live-settings.local.json
+
     Write scenarios enabled in the JSON configuration:
       dotnet run --project live/Shinden.NET.LiveTests.csproj -- --run-live --allow-writes --config live/live-settings.local.json
 
@@ -37,7 +40,7 @@ internal static class Program
         if (args.Length == 0 || args.Contains("--help")) { Console.WriteLine(Help); return 0; }
         try
         {
-            var (run, allowWrites, configPath) = ParseArguments(args);
+            var (run, allowWrites, configPath, only) = ParseArguments(args);
             if (run && IsCi(Environment.GetEnvironmentVariable))
                 throw new SettingsException("Live tests are blocked in CI environments.");
             var settings = LiveSettings.Load(configPath);
@@ -50,7 +53,7 @@ internal static class Program
             using var cancellation = new CancellationTokenSource();
             ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
             Console.CancelKeyPress += cancel;
-            var runner = new LiveRunner(settings, Console.Out);
+            var runner = new LiveRunner(settings, Console.Out, only: only);
             var exitCode = 0;
             try { await runner.RunAsync(cancellation.Token); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { exitCode = 130; }
@@ -74,12 +77,13 @@ internal static class Program
         }
     }
 
-    internal static (bool Run, bool AllowWrites, string ConfigPath) ParseArguments(string[] args)
+    internal static (bool Run, bool AllowWrites, string ConfigPath, string? Only) ParseArguments(string[] args)
     {
         var run = false;
         var validate = false;
         var writes = false;
         var path = "live/live-settings.local.json";
+        string? only = null;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -88,10 +92,11 @@ internal static class Program
                 case "--validate": validate = true; break;
                 case "--allow-writes": writes = true; break;
                 case "--config" when i + 1 < args.Length: path = args[++i]; break;
-                default: throw new SettingsException("Unknown argument or missing path after --config. Use --help.");
+                case "--only" when i + 1 < args.Length && !string.IsNullOrWhiteSpace(args[i + 1]): only = args[++i]; break;
+                default: throw new SettingsException("Unknown argument or missing value after --config/--only. Use --help.");
             }
         }
         if (run == validate) throw new SettingsException("Select exactly one mode: --run-live or --validate.");
-        return (run, writes, path);
+        return (run, writes, path, only);
     }
 }

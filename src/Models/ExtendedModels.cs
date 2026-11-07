@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -190,8 +191,19 @@ public class ReadSpeed : PhpRow
 
 public class SeasonalAnimeInfo
 {
+    /// <summary>Year and season (winter/spring/summer/fall) the lists belong to; same shape as the v1 title season.</summary>
+    [JsonProperty("season")] public TitleByIdSeason Season { get; init; }
+    /// <summary>When the lists last changed, as sent by the API (server time, no offset).</summary>
+    [JsonProperty("updated_at")] public DateTime? UpdatedAt { get; init; }
     [JsonProperty("titles")] public List<ulong> TitleIds { get; init; } = new();
     [JsonProperty("characters")] public List<ulong> CharacterIds { get; init; } = new();
+    [JsonProperty("character_titles")] public List<SeasonalCharacterTitle> CharacterTitles { get; init; } = new();
+}
+
+public class SeasonalCharacterTitle
+{
+    [JsonProperty("character_id")] public ulong CharacterId { get; init; }
+    [JsonProperty("title_id")] public ulong TitleId { get; init; }
 }
 
 public class CharacterFlat

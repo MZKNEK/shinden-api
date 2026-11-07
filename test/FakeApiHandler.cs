@@ -17,7 +17,7 @@ internal sealed class FakeApiHandler : HttpMessageHandler
             "v1/search/titles" => SearchTitle(request),
             "compat/php-api/character/flat-list" or "compat/php-api/character/flat-list-anime"
                 => Json("""[{"c":1,"p":2,"f":"A","l":"B","t":"Title","n":120}]"""),
-            "compat/php-api/anime/current-season" => Json("""{"titles":[101,102],"characters":["201","202"]}"""),
+            "compat/php-api/anime/current-season" => Json("""{"season":{"year":2026,"season":"fall"},"updated_at":"2026-11-07 12:00:00","titles":[101,102],"characters":["201","202"],"character_titles":[{"character_id":"201","title_id":101}]}"""),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent($"Unknown fake endpoint: {path}") }
         };
         return Task.FromResult(response);

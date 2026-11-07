@@ -55,9 +55,17 @@ public class RequestContractTests
         await Expect(api.Titles.EpisodesAsync(42), "/compat/php-api/title/42/episodes");
         await Expect(api.Episodes.NewAsync(), "/compat/php-api/episode/new");
         await Expect(api.Episodes.CurrentSeasonAsync(), "/compat/php-api/anime/current-season");
+        handler.Query().Should().BeEmpty();
+        await Expect(api.Episodes.CurrentSeasonAsync(2026, Season.Spring), "/compat/php-api/anime/current-season");
+        handler.Query()["year"].Should().Equal("2026");
+        handler.Query()["season"].Should().Equal("spring");
+#pragma warning disable CS0618 // the obsolete alias must still send "fall"
+        await Expect(api.Episodes.CurrentSeasonAsync(2025, Season.Autumn), "/compat/php-api/anime/current-season");
+#pragma warning restore CS0618
+        handler.Query()["season"].Should().Equal("fall");
         await Expect(api.Search.AnimeAsync(new AnimeSearchOptionsBuilder().Build()), "/v1/search/browse/anime", "/v1/search/browse/{obj}");
         await Expect(api.Search.MangaAsync(new AnimeSearchOptionsBuilder().Build()), "/v1/search/browse/manga", "/v1/search/browse/{obj}");
-        await Expect(api.Search.SeasonAsync(2026, Season.Autumn), "/v1/search/season/2026/autumn", "/v1/search/season/{year}/{season}");
+        await Expect(api.Search.SeasonAsync(2026, Season.Fall), "/v1/search/season/2026/fall", "/v1/search/season/{year}/{season}");
         handler.Response = """{"id":42}""";
         await Expect(api.Titles.AnimeAsync(42), "/v1/catalog/anime/42");
         await Expect(api.Characters.CatalogAsync(42), "/v1/catalog/characters/42");
@@ -225,11 +233,13 @@ public class RequestContractTests
         Action userLimit = () => new User("nick", 21);
         Action titleLimit = () => new TitleQuick("title", limit: 51);
         Action historyLimit = () => new Queries.User.LastRead(42, 101);
-        Action seasonYear = () => new SeasonTitles(1899, Season.Autumn);
-        Action seasonLimit = () => new SeasonTitles(2026, Season.Autumn, limit: 2001);
+        Action seasonYear = () => new SeasonTitles(1899, Season.Fall);
+        Action seasonLimit = () => new SeasonTitles(2026, Season.Fall, limit: 2001);
+        Action currentSeasonYear = () => new Queries.Episode.CurrentSeason(2101, Season.Winter);
+        Action currentSeasonName = () => new Queries.Episode.CurrentSeason(2026, (Season)7);
         Action emptyIds = () => new TitlesByIds(Array.Empty<ulong>());
         Action tooManyIds = () => new TitlesByIds(Enumerable.Repeat(1UL, 101));
-        foreach (var action in new[] { userLimit, titleLimit, historyLimit, seasonYear, seasonLimit, emptyIds, tooManyIds })
+        foreach (var action in new[] { userLimit, titleLimit, historyLimit, seasonYear, seasonLimit, currentSeasonYear, currentSeasonName, emptyIds, tooManyIds })
             action.Should().Throw<ArgumentException>();
     }
 }

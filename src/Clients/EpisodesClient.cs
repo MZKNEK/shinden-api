@@ -20,4 +20,9 @@ public sealed class EpisodesClient
     public Task<ErrorOr<SeasonalAnimeInfo>> CurrentSeasonAsync(
         CancellationToken cancellationToken = default)
         => _manager.MakeQueryAsync(new CurrentSeason(), cancellationToken: cancellationToken);
+
+    /// <summary>Gets the seasonal title and character lists for the given season instead of the current one.</summary>
+    public Task<ErrorOr<SeasonalAnimeInfo>> CurrentSeasonAsync(int year, Queries.V1.Season season,
+        CancellationToken cancellationToken = default)
+        => _manager.MakeQueryAsync(new CurrentSeason(year, season), cancellationToken: cancellationToken);
 }

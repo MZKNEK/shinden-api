@@ -41,14 +41,16 @@ internal sealed class LiveRunner
     private readonly TextWriter _output;
     private readonly HttpMessageHandler? _handler;
     private readonly Func<CancellationToken, Task> _spacing;
+    private readonly string? _only;
     private CancellationToken _cancellation;
     internal LiveReport Report { get; } = new();
     private bool DeferFavouriteReads => _settings.Writes.Enabled && _settings.Writes.Favourite.Enabled
         && _settings.Writes.Favourite.Type == "character" && _settings.LegacyApi.UserAuthentication.Enabled;
 
     internal LiveRunner(LiveSettings settings, TextWriter output, HttpMessageHandler? handler = null,
-        Func<CancellationToken, Task>? spacing = null)
+        Func<CancellationToken, Task>? spacing = null, string? only = null)
     {
+        _only = only;
         _settings = settings;
         _output = output;
         _handler = handler;
@@ -135,7 +137,11 @@ internal sealed class LiveRunner
         var browse = new AnimeSearchOptionsBuilder().WithPage(1).WithPageSize(5).Build();
         await Check("new.browse.anime", token => api.Search.AnimeAsync(browse, token), ListResult);
         await Check("new.browse.manga", token => api.Search.MangaAsync(browse, token), ListResult);
-        await Check("new.season", token => api.Search.SeasonAsync(data.SeasonYear, Enum.Parse<Season>(data.Season, true), limit: 5, cancellationToken: token), ListResult);
+        await Check("new.season", token => api.Search.SeasonAsync(data.SeasonYear, Enum.Parse<Season>(data.Season, true), limit: 5, cancellationToken: token), value =>
+        {
+            ListResult(value);
+            Need(value.Items.Count > 0, "The configured season returned no titles.");
+        });
         await Check("new.catalog.anime", token => api.Titles.AnimeAsync(ids.Anime, token), value =>
             Need(value.Id == ids.Anime && !string.IsNullOrWhiteSpace(value.Title), "Invalid anime catalog response."), enabled: ids.Anime > 0, skip: "No animeId is available.");
         await Check("new.catalog.character", token => api.Characters.CatalogAsync(ids.Character, token), value =>
@@ -162,9 +168,17 @@ internal sealed class LiveRunner
             Need(value.Relations is not null, "The character relations list is missing."),
             enabled: authenticated && ids.Anime > 0, skip: "No new API token or animeId is available.");
         await Check("compat.episodes.new", token => api.Episodes.NewAsync(token), enabled: authenticated, skip: "New API token tests are disabled.");
-        await Check("compat.current-season", token => api.Episodes.CurrentSeasonAsync(token), value =>
-            Need(value.TitleIds is { Count: > 0 } && value.CharacterIds is not null, "Current season IDs are missing."),
+        await Check("compat.current-season", token => api.Episodes.CurrentSeasonAsync(token), SeasonalLists,
             enabled: authenticated, skip: "New API token tests are disabled.");
+        // The season before the configured one, so the response must differ from the current list.
+        var configured = Enum.Parse<Season>(data.Season, true);
+        var (previousYear, previous) = configured == Season.Winter ? (data.SeasonYear - 1, Season.Fall) : (data.SeasonYear, configured - 1);
+        await Check("compat.current-season.by-season", token => api.Episodes.CurrentSeasonAsync(previousYear, previous, token), value =>
+        {
+            SeasonalLists(value);
+            Need(value.Season.Year == previousYear && value.Season.Value == previous,
+                "The response season does not match the requested year and season.");
+        }, enabled: authenticated, skip: "New API token tests are disabled.");
         await Check("bulk.compat.characters.all", token => api.Characters.FlatListAsync(token), NonEmpty,
             enabled: authenticated && _settings.IncludeBulkCharacterLists, skip: "Bulk lists or token tests are disabled.");
         await Check("bulk.compat.characters.anime", token => api.Characters.AnimeFlatListAsync(token), NonEmpty,
@@ -403,6 +417,7 @@ internal sealed class LiveRunner
         bool enabled = true, string? skip = null, bool allowEmpty404 = false,
         CancellationToken? independentToken = null, string? recovery = null, string? empty404Details = null) where T : class
     {
+        if (_only is not null && !name.StartsWith(_only, StringComparison.Ordinal)) { Skip(name, $"Filtered out by --only {_only}."); return null; }
         if (!enabled) { Skip(name, skip ?? "The scenario is disabled."); return null; }
         var token = independentToken ?? _cancellation;
         var result = new CheckResult { Name = name, Status = "FAIL" };
@@ -454,6 +469,16 @@ internal sealed class LiveRunner
     {
         if (DeferFavouriteReads) SkipFavouriteReads(reason);
         foreach (var name in new[] { "favourite", "title-status", "anime-rating", "manga-rating", "increase-watched" }) Skip("write." + name, reason);
+    }
+
+    private static void SeasonalLists(SeasonalAnimeInfo value)
+    {
+        Need(value.TitleIds is { Count: > 0 } && value.CharacterIds is not null, "Current season IDs are missing.");
+        Need(value.Season is { Year: >= 1900 and <= 2100, Value: not null },
+            "The season field is missing or invalid.");
+        Need(value.UpdatedAt.HasValue, "The updated_at field is missing.");
+        Need(value.CharacterTitles is not null && value.CharacterTitles.All(link => link.CharacterId > 0 && link.TitleId > 0),
+            "The character_titles field is missing or has invalid IDs.");
     }
 
     private void Skip(string name, string reason) => Add(new CheckResult { Name = name, Status = "SKIP", Details = reason });

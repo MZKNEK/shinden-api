@@ -51,7 +51,28 @@ public sealed class Tags : Search.Search<SearchTag>
             RequestUri.Parameter("limit", limit is >= 1 and <= 20 ? limit : throw new ArgumentOutOfRangeException(nameof(limit)))) { }
 }
 
-public enum Season { Winter, Spring, Summer, Autumn }
+/// <summary>Anime season; names match what the API sends and accepts (winter/spring/summer/fall).</summary>
+public enum Season
+{
+    Winter,
+    Spring,
+    Summer,
+    Fall,
+    [Obsolete("Use Season.Fall; the API calls this season \"fall\".")] Autumn = Fall
+}
+
+internal static class SeasonNames
+{
+    // Explicit mapping: Enum.ToString() is ambiguous for the Autumn alias.
+    internal static string ToApiName(this Season season) => season switch
+    {
+        Season.Winter => "winter",
+        Season.Spring => "spring",
+        Season.Summer => "summer",
+        Season.Fall => "fall",
+        _ => throw new ArgumentOutOfRangeException(nameof(season))
+    };
+}
 
 public sealed class SeasonTitles : GetRequest<SearchResult>
 {
@@ -62,8 +83,7 @@ public sealed class SeasonTitles : GetRequest<SearchResult>
     private static string Path(int year, Season season)
     {
         if (year is < 1900 or > 2100) throw new ArgumentOutOfRangeException(nameof(year));
-        if (!Enum.IsDefined(typeof(Season), season)) throw new ArgumentOutOfRangeException(nameof(season));
-        return $"v1/search/season/{year}/{season.ToString().ToLowerInvariant()}";
+        return $"v1/search/season/{year}/{season.ToApiName()}";
     }
 }
 
