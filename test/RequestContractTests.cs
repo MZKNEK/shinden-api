@@ -189,6 +189,8 @@ public class RequestContractTests
     [DataRow(400, """{"status":"wrong api key"}""", null, "wrong api key")]
     [DataRow(404, "", null, "")]
     [DataRow(502, "<html>Proxy error</html>", null, "<html>Proxy error</html>")]
+    [DataRow(502, """{"title":"Error 502: Bad gateway","status":502,"detail":"The origin web server returned an invalid or incomplete response to Cloudflare.","error_code":502,"error_name":"origin_bad_gateway","retry_after":60}""",
+        "origin_bad_gateway", "The origin web server returned an invalid or incomplete response to Cloudflare.")]
     public async Task ErrorsPreserveBothApiFormats(int status, string body, string? apiCode, string message)
     {
         using var handler = new RecordingHandler { StatusCode = (HttpStatusCode)status, Response = body };

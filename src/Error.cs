@@ -67,8 +67,10 @@ public class Error
         return new Error
         {
             Code = (int)statusCode,
-            Message = Text(payload, "message") ?? Text(payload, "status") ?? content,
-            ApiCode = Text(payload, "code"),
+            // PHP API errors carry text in "status"; Cloudflare error pages put the numeric code there.
+            Message = Text(payload, "message") ?? StringText(payload, "status")
+                ?? Text(payload, "detail") ?? Text(payload, "title") ?? content,
+            ApiCode = Text(payload, "code") ?? Text(payload, "error_name"),
             Field = Text(payload, "field"),
             RetryAfterSeconds = retryAfterSeconds ??
                 (int.TryParse(Text(payload, "retry_after"), out var seconds) ? seconds : (int?)null),
@@ -79,4 +81,7 @@ public class Error
 
     private static string Text(JObject payload, string name)
         => payload?[name] is JValue value ? value.ToString() : null;
+
+    private static string StringText(JObject payload, string name)
+        => payload?[name] is JValue { Type: JTokenType.String } value ? value.ToString() : null;
 }
