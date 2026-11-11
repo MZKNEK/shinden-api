@@ -292,8 +292,11 @@ the same credentials are not sent and return at once a `429` error with
 `ErrorType.RateLimit` and the time left in `RetryAfter`. The new API and the PHP
 API are paused separately, as they use different credentials, and changing the
 token or address through `Reconfigure` ends the pause. Only 429 pauses the
-client; 467, 503 and other statuses do not. The pause start (`Warning`) and end
-(`Information`) are logged with their duration.
+client; 467, 503 and other statuses do not. A pause lasts at most 10 minutes
+whatever `Retry-After` says, so a faulty server or proxy cannot stop the client for
+long; the server error itself still carries the original value. The pause start
+(`Warning`) and end (`Information`) are logged with their duration; a failing
+log provider does not affect the pause.
 
 ```csharp
 using var shinden = new Shinden(config => config
@@ -318,6 +321,10 @@ The client-side limit counts each call once (transient retries and redirects are
 not counted, so leave some headroom) and applies to each API's credentials
 separately. When no slot frees up within the maximum wait, the call returns a
 `429` error with `ErrorType.RateLimit` without being sent.
+
+Use the client-side limit together with `WithRateLimitMaxWait`: without it, every
+request waiting for a pause is sent at the moment the pause ends, and such a burst
+can exceed the server limit again right away. The limit spreads them out.
 
 The pause and the limit belong to one `Shinden` instance. Share a single instance
 per token — the dependency injection package registers it as a singleton by

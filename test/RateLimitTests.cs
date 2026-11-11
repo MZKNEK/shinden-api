@@ -44,6 +44,22 @@ public class RateLimitTests
     }
 
     [TestMethod]
+    public async Task VeryLongRetryAfterPausesForAtMostTenMinutes()
+    {
+        var logger = new CaptureLogger();
+        using var handler = new SequenceHandler(Reply.Fail(429, TooFast, TimeSpan.FromDays(3)), Reply.Ok(Users));
+        using var api = CreateApi(handler, logger: logger);
+
+        // The server's error still carries what the server asked for.
+        (await api.Search.UsersAsync("nick")).Error.RetryAfter.Should().Be(TimeSpan.FromDays(3));
+        var refused = (await api.Search.UsersAsync("nick")).Error;
+        refused.Type.Should().Be(ErrorType.RateLimit);
+        refused.RetryAfter.Should().BeGreaterThan(TimeSpan.FromMinutes(9)).And.BeLessOrEqualTo(TimeSpan.FromMinutes(10));
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Warning
+            && entry.Text.Contains("Retry-After 259200 s") && entry.Text.Contains("maximum 600 s"));
+    }
+
+    [TestMethod]
     public async Task RetryAfterAsHttpDateIsSupported()
     {
         using var handler = new SequenceHandler(
@@ -214,6 +230,22 @@ public class RateLimitTests
     }
 
     [TestMethod]
+    public async Task ThrowingLoggerAtThePauseEndDoesNotCrashTheProcess()
+    {
+        // An exception thrown from a timer callback is unhandled and would terminate the test host.
+        var logger = new ThrowingLogger();
+        using var handler = new SequenceHandler(Reply.Fail(429, TooFast, TimeSpan.FromSeconds(1)), Reply.Ok(Users));
+        using var api = CreateApi(handler, logger: logger);
+
+        await api.Search.UsersAsync("nick");
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        logger.Calls.Should().BeGreaterThan(0);
+        // The pause has ended although its log failed, so the next request is sent.
+        await api.Search.UsersAsync("nick");
+        handler.CallCount.Should().Be(2);
+    }
+
+    [TestMethod]
     public async Task ClientSideLimitRefusesRequestsOverTheLimit()
     {
         using var handler = new SequenceHandler(Reply.Ok(Users));
@@ -339,6 +371,19 @@ public class RateLimitTests
             else if (reply.Date is { } date)
                 response.Headers.RetryAfter = new RetryConditionHeaderValue(date);
             return Task.FromResult(response);
+        }
+    }
+
+    private sealed class ThrowingLogger : ILogger<Shinden>
+    {
+        private int _calls;
+        internal int Calls => Volatile.Read(ref _calls);
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => null!;
+        public bool IsEnabled(LogLevel level) => level == LogLevel.Information;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            Interlocked.Increment(ref _calls);
+            throw new InvalidOperationException("The log sink is unavailable.");
         }
     }
 

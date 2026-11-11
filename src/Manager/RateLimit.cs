@@ -55,8 +55,12 @@ internal static class MonotonicClock
 /// </summary>
 internal sealed class RateLimitBlock : IDisposable
 {
-    // Timer due times are capped; a longer pause is simply rescheduled when the timer fires.
-    private static readonly TimeSpan MaxTimerDelay = TimeSpan.FromHours(1);
+    /// <summary>
+    /// The longest pause, whatever Retry-After says. With 300 requests per minute a valid Retry-After is at most a minute;
+    /// a broken server or proxy must not stop the client for days. If the server still limits after this, the next
+    /// request receives another 429 and pauses again, so at most one request is sent per this period.
+    /// </summary>
+    internal static readonly TimeSpan MaxPause = TimeSpan.FromMinutes(10);
 
     private readonly object _lock = new();
     private readonly ILogger _logger;
@@ -91,6 +95,9 @@ internal sealed class RateLimitBlock : IDisposable
     {
         if (delay <= TimeSpan.Zero)
             return;
+        var requested = delay;
+        if (delay > MaxPause)
+            delay = MaxPause;
 
         bool started;
         lock (_lock)
@@ -109,10 +116,13 @@ internal sealed class RateLimitBlock : IDisposable
             _active = true;
             _until = until;
             _timer ??= new Timer(static block => ((RateLimitBlock)block).OnTimer(), this, Timeout.Infinite, Timeout.Infinite);
-            _timer.Change(Min(delay, MaxTimerDelay), Timeout.InfiniteTimeSpan);
+            _timer.Change(delay, Timeout.InfiniteTimeSpan);
         }
 
-        if (started)
+        if (started && requested > delay)
+            Log(LogLevel.Warning, "[rate limit]: {api} API returned 429 with Retry-After {requested} s; requests are paused for the maximum {seconds} s, until {until}",
+                _api, Seconds(requested), Seconds(delay), DateTimeOffset.UtcNow + delay);
+        else if (started)
             Log(LogLevel.Warning, "[rate limit]: {api} API returned 429; requests are paused for {seconds} s, until {until}",
                 _api, Seconds(delay), DateTimeOffset.UtcNow + delay);
         else
@@ -131,15 +141,24 @@ internal sealed class RateLimitBlock : IDisposable
             var remaining = _until - now;
             if (remaining > TimeSpan.Zero)
             {
-                _timer.Change(Min(remaining, MaxTimerDelay), Timeout.InfiniteTimeSpan);
+                _timer.Change(remaining, Timeout.InfiniteTimeSpan);
                 return;
             }
             _active = false;
             duration = now - _started;
         }
 
-        Log(LogLevel.Information, "[rate limit]: {api} API pause ended after {seconds} s; requests are sent again",
-            _api, Seconds(duration));
+        // Timer callbacks run on the thread pool, where an exception would terminate the process; Microsoft.Extensions.Logging
+        // rethrows exceptions of its providers, so a failing log sink must not escape from here.
+        try
+        {
+            Log(LogLevel.Information, "[rate limit]: {api} API pause ended after {seconds} s; requests are sent again",
+                _api, Seconds(duration));
+        }
+        catch (Exception)
+        {
+            // Nothing else can report it: the logger itself is what failed.
+        }
     }
 
     public void Dispose()
@@ -158,8 +177,6 @@ internal sealed class RateLimitBlock : IDisposable
         if (_logger is not null && _logger.IsEnabled(level))
             _logger.Log(level, message, args);
     }
-
-    private static TimeSpan Min(TimeSpan left, TimeSpan right) => left < right ? left : right;
 
     private static double Seconds(TimeSpan value) => Math.Round(value.TotalSeconds, 1);
 }
