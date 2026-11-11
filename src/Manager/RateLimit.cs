@@ -10,6 +10,9 @@ internal sealed record RateLimitOptions
 {
     internal static readonly RateLimitOptions Default = new(TimeSpan.Zero, 0, 0, Config.DefaultRateLimitWindow);
 
+    /// <summary>The longest single wait: Task.Delay accepts at most int.MaxValue milliseconds (about 24.8 days).</summary>
+    internal static readonly TimeSpan MaxDelay = TimeSpan.FromMilliseconds(int.MaxValue);
+
     internal RateLimitOptions(TimeSpan maxWait, int retries, int requests, TimeSpan window)
     {
         if (maxWait < TimeSpan.Zero)
@@ -18,10 +21,11 @@ internal sealed record RateLimitOptions
             throw new ArgumentOutOfRangeException(nameof(retries), "The rate-limit retry count cannot be negative.");
         if (requests < 0)
             throw new ArgumentOutOfRangeException(nameof(requests), "The request limit cannot be negative.");
-        if (requests > 0 && window <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(window), "The rate-limit window must be positive.");
+        if (requests > 0 && (window <= TimeSpan.Zero || window > MaxDelay))
+            throw new ArgumentOutOfRangeException(nameof(window), "The rate-limit window must be positive and at most 24 days.");
 
-        MaxWait = maxWait;
+        // A longer (for example TimeSpan.MaxValue) wait means "as long as possible"; it is capped instead of rejected.
+        MaxWait = maxWait < MaxDelay ? maxWait : MaxDelay;
         Retries = retries;
         Requests = requests;
         Window = window;
@@ -98,7 +102,8 @@ internal sealed class RateLimitBlock : IDisposable
             if (_active && until <= _until)
                 return;
 
-            started = !_active;
+            // A pause that has expired but whose timer has not fired yet counts as ended.
+            started = !_active || _until <= now;
             if (started)
                 _started = now;
             _active = true;

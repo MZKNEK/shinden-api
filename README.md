@@ -308,9 +308,10 @@ using var shinden = new Shinden(config => config
     .Build());
 ```
 
-All three are off by default. `WithRateLimitMaxWait` bounds the waiting of each
-request (callers can still cancel it); it does not count towards the request
-timeout. `WithRateLimitRetries` applies only to GET, HEAD and OPTIONS — requests
+All three are off by default. `WithRateLimitMaxWait` bounds each wait — before
+the first attempt and before each retry — and callers can still cancel it; waits
+do not count towards the request timeout, which applies to every attempt.
+`TimeSpan.MaxValue` waits as long as possible (about 24 days). `WithRateLimitRetries` applies only to GET, HEAD and OPTIONS — requests
 that change data are never sent again after 429. Its wait is bounded by
 `WithRateLimitMaxWait`, or by the request timeout when no maximum wait is set.
 The client-side limit counts each call once (transient retries and redirects are

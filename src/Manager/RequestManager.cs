@@ -267,7 +267,7 @@ internal class RequestManager : IDisposable
     /// </summary>
     private static async Task<Error> WaitForCapacityAsync(State state, TimeSpan maxWait, CancellationToken cancellationToken)
     {
-        var deadline = MonotonicClock.Now + maxWait;
+        var deadline = MonotonicClock.Now + (maxWait < RateLimitOptions.MaxDelay ? maxWait : RateLimitOptions.MaxDelay);
         var refusal = await WaitForPauseAsync(state.Block, deadline, cancellationToken).ConfigureAwait(false);
         if (refusal is not null || state.Limiter is null)
             return refusal;

@@ -244,6 +244,20 @@ public class RateLimitTests
     }
 
     [TestMethod]
+    public async Task UnboundedMaximumWaitIsAccepted()
+    {
+        using var handler = new SequenceHandler(Reply.Ok(Users));
+        using var api = CreateApi(handler, builder => builder.WithRateLimitMaxWait(TimeSpan.MaxValue)
+            .WithRateLimit(5, TimeSpan.FromMinutes(1)));
+
+        // The first call may be the first use of the monotonic clock; overflow needs it to have advanced.
+        (await api.Search.UsersAsync("nick")).IsOk().Should().BeTrue();
+        await Task.Delay(20);
+        (await api.Search.UsersAsync("nick")).IsOk().Should().BeTrue();
+        api.Config.RateLimitMaxWait.Should().Be(TimeSpan.MaxValue);
+    }
+
+    [TestMethod]
     public void InvalidRateLimitSettingsAreRejected()
     {
         ConfigBuilder Builder() => new ConfigBuilder().WithUri("https://new.shinden.test/")
@@ -256,6 +270,8 @@ public class RateLimitTests
         Builder().WithRateLimit(-1, TimeSpan.FromMinutes(1)).Invoking(builder => builder.Build())
             .Should().Throw<ArgumentOutOfRangeException>();
         Builder().WithRateLimit(10, TimeSpan.Zero).Invoking(builder => builder.Build())
+            .Should().Throw<ArgumentOutOfRangeException>();
+        Builder().WithRateLimit(10, TimeSpan.MaxValue).Invoking(builder => builder.Build())
             .Should().Throw<ArgumentOutOfRangeException>();
         Builder().WithRateLimit(0, TimeSpan.Zero).Build().RateLimitRequests.Should().Be(0);
 
