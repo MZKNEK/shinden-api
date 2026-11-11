@@ -87,8 +87,8 @@ public readonly struct ErrorOr<TSelf> where TSelf : class
         Exception ex, ErrorType type = ErrorType.Exception, int code = 500)
         => Failure(Error.FromException(ex, type, code));
 
-    internal static ErrorOr<TSelf> FromHttpResponse(HttpStatusCode statusCode, string content, int? retryAfterSeconds = null)
-        => Failure(Error.FromHttpResponse(statusCode, content, retryAfterSeconds));
+    internal static ErrorOr<TSelf> FromHttpResponse(HttpStatusCode statusCode, string content, TimeSpan? retryAfter = null)
+        => Failure(Error.FromHttpResponse(statusCode, content, retryAfter));
 
     public static ErrorOr<TSelf> Success(TSelf value)
         => value is null

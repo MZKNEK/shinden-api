@@ -36,9 +36,9 @@ public class ArchitectureTests
     }
 
     [DataTestMethod]
-    [DataRow(503)]
-    [DataRow(429)]
-    public async Task RetryPolicyRetriesTransientGetFailures(int status)
+    [DataRow(503, 0)]
+    [DataRow(429, 1)]
+    public async Task RetryPolicyRetriesTransientGetFailures(int status, int rateLimitRetries)
     {
         using var handler = new RetryHandler(
             new HttpStatusCode[] { (HttpStatusCode)status, HttpStatusCode.OK },
@@ -46,6 +46,7 @@ public class ArchitectureTests
         using var api = new Shinden(config => config
             .WithUri("https://fake.shinden.test/")
             .WithMaxRetries(1)
+            .WithRateLimitRetries(rateLimitRetries)
             .WithRetryDelay(TimeSpan.Zero)
             .WithAuth(new Auth { Token = "token", UserAgent = "test-agent" })
             .Build(),

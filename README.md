@@ -231,7 +231,7 @@ else
 
 `Error.Code` is the numeric HTTP status for HTTP failures; local failures
 use a synthetic code (for example, `500` for parsing and `408` for timeout).
-`ApiCode`, `Field` and `RetryAfterSeconds` expose v1 error details;
+`ApiCode`, `Field`, `RetryAfter` and `RetryAfterSeconds` expose v1 error details;
 `RawResponse` retains HTTP error bodies.
 Compatibility errors use their `status` as the message. Non-JSON and empty
 error bodies are supported. Caller cancellation propagates; request timeouts
@@ -276,9 +276,51 @@ original diagnostic data and do not use the logger's redaction.
 
 Configure `WithRequestTimeout`, `WithMaxRetries` and `WithRetryDelay` as
 needed. Defaults are 30 seconds, two retries and a 250 ms base delay.
-Transient GET failures are retried, honoring `Retry-After`; a server delay
+Transient GET failures (408 and 5xx) are retried, honoring `Retry-After`; a server delay
 that exceeds the remaining request timeout returns the HTTP error immediately.
 New API requests do not use PHP user sessions or cookies.
+
+### Rate limits
+
+The API limits requests per token and answers `429 Too Many Requests` with a
+`Retry-After` header. `Error.RetryAfter` (`TimeSpan?`) carries that wait for any
+error status, read from the header (seconds or an HTTP date) or from the v1
+`retry_after` field; `RetryAfterSeconds` is the same value rounded up.
+
+After a 429 with a wait time, the client pauses: until it passes, requests with
+the same credentials are not sent and return at once a `429` error with
+`ErrorType.RateLimit` and the time left in `RetryAfter`. The new API and the PHP
+API are paused separately, as they use different credentials, and changing the
+token or address through `Reconfigure` ends the pause. Only 429 pauses the
+client; 467, 503 and other statuses do not. The pause start (`Warning`) and end
+(`Information`) are logged with their duration.
+
+```csharp
+using var shinden = new Shinden(config => config
+    .WithUri("https://shinden.pl/")
+    .WithAuth(auth => auth.WithToken(token).WithUserAgent("MyBot/1.0").Build())
+    // Wait up to 10 s for a pause or a limiter slot instead of failing at once.
+    .WithRateLimitMaxWait(TimeSpan.FromSeconds(10))
+    // Send a GET once more after 429, when Retry-After has passed.
+    .WithRateLimitRetries(1)
+    // Start at most 290 requests per minute, below the server's 300.
+    .WithRateLimit(290, TimeSpan.FromMinutes(1))
+    .Build());
+```
+
+All three are off by default. `WithRateLimitMaxWait` bounds the waiting of each
+request (callers can still cancel it); it does not count towards the request
+timeout. `WithRateLimitRetries` applies only to GET, HEAD and OPTIONS — requests
+that change data are never sent again after 429. Its wait is bounded by
+`WithRateLimitMaxWait`, or by the request timeout when no maximum wait is set.
+The client-side limit counts each call once (transient retries and redirects are
+not counted, so leave some headroom) and applies to each API's credentials
+separately. When no slot frees up within the maximum wait, the call returns a
+`429` error with `ErrorType.RateLimit` without being sent.
+
+The pause and the limit belong to one `Shinden` instance. Share a single instance
+per token — the dependency injection package registers it as a singleton by
+default; `Scoped` or `Transient` lifetimes give every instance its own pause and limit.
 
 Redirects (301, 302, 303, 307, 308) are followed by the library, up to 10 per
 request and within the same timeout. The Bearer token, old-API Marmolade header

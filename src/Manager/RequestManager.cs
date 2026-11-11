@@ -17,10 +17,15 @@ internal class RequestManager : IDisposable
     /// reads it once, so a request that is already running finishes with the settings it started with.
     /// </summary>
     internal sealed record State(Uri BaseUri, Credentials.Auth Auth, Queries.User.Login UserLoginReq,
-        ShindenUrlResolver UrlResolver, TimeSpan SessionLifetime, Func<DateTimeOffset> Clock, ExecutorSettings Executor)
+        ShindenUrlResolver UrlResolver, TimeSpan SessionLifetime, Func<DateTimeOffset> Clock, ExecutorSettings Executor,
+        RateLimitOptions RateLimit)
     {
         /// <summary>Changes whenever the credentials or address change; older PHP sessions are then ignored.</summary>
         internal int CredentialsVersion { get; init; }
+        /// <summary>The 429 pause of these credentials; kept while the credentials and address stay the same.</summary>
+        internal RateLimitBlock Block { get; init; }
+        /// <summary>Optional client-side limiter; kept while the credentials, address and limit stay the same.</summary>
+        internal ClientRateLimiter Limiter { get; init; }
     }
 
     private readonly bool _legacy;
@@ -41,18 +46,18 @@ internal class RequestManager : IDisposable
         ShindenUrlResolver urlResolver = default!,
         TimeSpan requestTimeout = default, int maxRetries = 0,
         TimeSpan retryDelay = default, bool legacy = false,
-        TimeSpan sessionLifetime = default, Func<DateTimeOffset> clock = null)
+        TimeSpan sessionLifetime = default, Func<DateTimeOffset> clock = null, RateLimitOptions rateLimit = null)
     {
         _legacy = legacy;
         _logger = logger;
-        _state = Prepare(baseUri, auth, urlResolver, requestTimeout, maxRetries, retryDelay, sessionLifetime, clock);
+        _state = Prepare(baseUri, auth, urlResolver, requestTimeout, maxRetries, retryDelay, sessionLifetime, clock, rateLimit);
         _executor = new HttpRequestExecutor(handler, client, legacy);
     }
 
     /// <summary>Validates settings and builds a new state without changing this manager.</summary>
     internal State Prepare(Uri baseUri, Credentials.Auth auth, ShindenUrlResolver urlResolver,
         TimeSpan requestTimeout, int maxRetries, TimeSpan retryDelay,
-        TimeSpan sessionLifetime, Func<DateTimeOffset> clock)
+        TimeSpan sessionLifetime, Func<DateTimeOffset> clock, RateLimitOptions rateLimit = null)
     {
         if (baseUri is null)
             throw new ArgumentNullException(nameof(baseUri));
@@ -70,7 +75,12 @@ internal class RequestManager : IDisposable
             sessionLifetime > TimeSpan.Zero ? sessionLifetime : Config.DefaultSessionLifetime,
             clock ?? Config.DefaultClock,
             new ExecutorSettings(requestTimeout > TimeSpan.Zero ? requestTimeout : Config.DefaultRequestTimeout,
-                maxRetries, retryDelay, auth));
+                maxRetries, retryDelay, auth),
+            rateLimit ?? RateLimitOptions.Default)
+        {
+            Block = new RateLimitBlock(_logger, _legacy ? "PHP" : "new"),
+            Limiter = rateLimit is { Requests: > 0 } ? new ClientRateLimiter(rateLimit.Requests, rateLimit.Window) : null
+        };
     }
 
     /// <summary>Switches to a state from <see cref="Prepare"/>. The PHP session is kept only if the credentials did not change.</summary>
@@ -91,9 +101,22 @@ internal class RequestManager : IDisposable
                 retired.AddRange(new[] { old.Id, old.Name, old.Hash }.Concat(old.CookieSecrets));
             _retiredSecrets = retired.Where(secret => !string.IsNullOrEmpty(secret)).Distinct().ToArray();
 
-            _state = next with { CredentialsVersion = sameCredentials ? current.CredentialsVersion : current.CredentialsVersion + 1 };
+            var sameLimit = sameCredentials && current.RateLimit.Requests == next.RateLimit.Requests
+                && current.RateLimit.Window == next.RateLimit.Window;
+            _state = next with
+            {
+                CredentialsVersion = sameCredentials ? current.CredentialsVersion : current.CredentialsVersion + 1,
+                // A 429 pause belongs to the credentials that received it; new credentials start unpaused.
+                Block = sameCredentials ? current.Block : next.Block,
+                Limiter = sameLimit ? current.Limiter : next.Limiter
+            };
             if (!sameCredentials)
+            {
                 _session = null;
+                current.Block.Dispose();
+            }
+            else
+                next.Block.Dispose();
         }
     }
 
@@ -143,13 +166,44 @@ internal class RequestManager : IDisposable
                 if (!string.IsNullOrEmpty(cookie)) body.Headers.TryAddWithoutValidation("Cookie", cookie);
             }
 
-            var response = await _executor.SendAsync(body, state.Executor, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            var rateLimit = state.RateLimit;
+            var maxWait = rateLimit.MaxWait;
+            TransportResponse response;
+            for (var rateLimitRetry = 0; ; rateLimitRetry++)
             {
+                var refusal = await WaitForCapacityAsync(state, maxWait, cancellationToken).ConfigureAwait(false);
+                if (refusal is not null)
+                {
+                    Log(LogLevel.Debug, "[{method}]: {uri} | not sent | {msg} | retry after {seconds} s", body.Method,
+                        body.RequestUri.LocalPath, refusal.Message, refusal.RetryAfterSeconds);
+                    return ErrorOr<TReturn>.FromError(refusal);
+                }
+
+                response = await _executor.SendAsync(body, state.Executor, cancellationToken).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                    break;
+
                 Log(LogLevel.Error, "[{method}]: {uri} | {code} | {time} ms | {error}", body.Method, body.RequestUri.LocalPath,
                     (int)response.StatusCode, GetElapsedMilliseconds(requestStart), response.Content);
+                var error = Error.FromHttpResponse(response.StatusCode, response.Content, response.RetryAfter);
+                if ((int)response.StatusCode != 429)
+                    return ErrorOr<TReturn>.FromError(error);
 
-                return ErrorOr<TReturn>.FromHttpResponse(response.StatusCode, response.Content, response.RetryAfterSeconds);
+                // Only 429 pauses the client; other statuses with Retry-After (for example 503) do not.
+                if (error.RetryAfter is { } pause)
+                    state.Block.Pause(pause);
+                // Requests that change data are never sent again after 429.
+                if (rateLimitRetry >= rateLimit.Retries || !IsSafeMethod(body.Method))
+                    return ErrorOr<TReturn>.FromError(error);
+
+                maxWait = rateLimit.MaxWait > TimeSpan.Zero ? rateLimit.MaxWait : state.Executor.Timeout;
+                if (state.Block.Remaining > maxWait)
+                    return ErrorOr<TReturn>.FromError(error);
+                // A 429 without Retry-After does not pause the client; wait the base retry delay instead.
+                if (state.Block.Remaining == TimeSpan.Zero && state.Executor.RetryDelay > TimeSpan.Zero)
+                    await Task.Delay(state.Executor.RetryDelay, cancellationToken).ConfigureAwait(false);
+                Log(LogLevel.Information, "[{method}]: {uri} | retrying after 429 | attempt {attempt}",
+                    body.Method, body.RequestUri.LocalPath, rateLimitRetry + 2);
             }
 
             Log(LogLevel.Information, "[{method}]: {uri} | {code} | {time} ms", body.Method, body.RequestUri.LocalPath,
@@ -202,6 +256,44 @@ internal class RequestManager : IDisposable
         {
             body.Dispose();
         }
+    }
+
+    private static bool IsSafeMethod(HttpMethod method)
+        => method == HttpMethod.Get || method == HttpMethod.Head || method == HttpMethod.Options;
+
+    /// <summary>
+    /// Waits, within <paramref name="maxWait"/>, until the 429 pause has passed and a client-side limiter slot is free.
+    /// Returns the error to report when that takes longer, or null when the request may be sent.
+    /// </summary>
+    private static async Task<Error> WaitForCapacityAsync(State state, TimeSpan maxWait, CancellationToken cancellationToken)
+    {
+        var deadline = MonotonicClock.Now + maxWait;
+        var refusal = await WaitForPauseAsync(state.Block, deadline, cancellationToken).ConfigureAwait(false);
+        if (refusal is not null || state.Limiter is null)
+            return refusal;
+
+        var left = deadline - MonotonicClock.Now;
+        if (!state.Limiter.TryReserve(left > TimeSpan.Zero ? left : TimeSpan.Zero, out var delay))
+            return Error.FromRateLimit(delay,
+                $"The client-side limit of {state.RateLimit.Requests} requests per {state.RateLimit.Window} is reached.");
+        if (delay > TimeSpan.Zero)
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+
+        // A 429 may have paused the client while this request waited for its slot.
+        return await WaitForPauseAsync(state.Block, deadline, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<Error> WaitForPauseAsync(RateLimitBlock block, TimeSpan deadline, CancellationToken cancellationToken)
+    {
+        // The pause can be extended by other requests' 429 responses while this one waits.
+        while (block.Remaining is var remaining && remaining > TimeSpan.Zero)
+        {
+            if (MonotonicClock.Now + remaining > deadline)
+                return Error.FromRateLimit(remaining,
+                    "Requests are paused after HTTP 429 until the API rate limit resets.");
+            await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+        }
+        return null;
     }
 
     // Returned/consumed as local state (not instance fields) so concurrent requests on the
@@ -365,6 +457,7 @@ internal class RequestManager : IDisposable
 
         _executor.Dispose();
         _loginLock.Dispose();
+        _state.Block.Dispose();
     }
 
     private void ThrowIfDisposed()

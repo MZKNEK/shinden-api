@@ -211,10 +211,20 @@ public class RequestContractTests
     {
         using var handler = new RecordingHandler { StatusCode = (HttpStatusCode)429, RetryAfter = 12,
             Response = """{"code":"too_fast","message":"Slow down","retry_after":5}""" };
-        using var api = CreateApi(handler);
-        (await api.Users.StatsAsync(42)).Error.RetryAfterSeconds.Should().Be(12);
+        using (var api = CreateApi(handler))
+        {
+            var error = (await api.Users.StatsAsync(42)).Error;
+            error.RetryAfterSeconds.Should().Be(12);
+            error.RetryAfter.Should().Be(TimeSpan.FromSeconds(12));
+        }
+        // A new client: the first one stays paused for 12 s after its 429.
         handler.RetryAfter = null;
-        (await api.Users.StatsAsync(42)).Error.RetryAfterSeconds.Should().Be(5);
+        using (var api = CreateApi(handler))
+        {
+            var error = (await api.Users.StatsAsync(42)).Error;
+            error.RetryAfterSeconds.Should().Be(5);
+            error.RetryAfter.Should().Be(TimeSpan.FromSeconds(5));
+        }
     }
 
     [TestMethod]

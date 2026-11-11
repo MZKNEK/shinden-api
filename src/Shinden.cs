@@ -44,12 +44,13 @@ public class Shinden : IDisposable
     {
         var target = Resolve(config ?? throw new ArgumentNullException(nameof(config)));
         _manager = new(target.Uri, target.Auth, logger, handler, client, target.UrlResolver,
-            config.RequestTimeout, config.MaxRetries, config.RetryDelay);
+            config.RequestTimeout, config.MaxRetries, config.RetryDelay, rateLimit: RateLimitOptions.From(config));
         try
         {
             _legacyManager = new(target.LegacyUri, target.LegacyAuth, logger, handler, client, target.UrlResolver,
                 config.RequestTimeout, config.MaxRetries, config.RetryDelay,
-                legacy: true, sessionLifetime: config.SessionLifetime, clock: config.Clock);
+                legacy: true, sessionLifetime: config.SessionLifetime, clock: config.Clock,
+                rateLimit: RateLimitOptions.From(config));
         }
         catch { _manager.Dispose(); throw; }
         _config = config;
@@ -97,10 +98,11 @@ public class Shinden : IDisposable
         {
             // Both states are validated before either is applied, so an invalid configuration changes nothing.
             var target = Resolve(config);
+            var rateLimit = RateLimitOptions.From(config);
             var main = _manager.Prepare(target.Uri, target.Auth, target.UrlResolver,
-                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock);
+                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock, rateLimit);
             var legacy = _legacyManager.Prepare(target.LegacyUri, target.LegacyAuth, target.UrlResolver,
-                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock);
+                config.RequestTimeout, config.MaxRetries, config.RetryDelay, config.SessionLifetime, config.Clock, rateLimit);
             _manager.Apply(main);
             _legacyManager.Apply(legacy);
             _config = config;

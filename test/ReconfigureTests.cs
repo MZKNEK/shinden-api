@@ -59,7 +59,9 @@ public class ReconfigureTests
             .WithLegacyUri("https://php.shinden.test/").WithLegacyAuth(new Auth { Token = "old", UserAgent = "b" })
             .WithSiteUri("https://site.test/").WithImageServerUri("https://img.test/")
             .WithRequestTimeout(TimeSpan.FromSeconds(7)).WithMaxRetries(4).WithRetryDelay(TimeSpan.FromSeconds(1))
-            .WithSessionLifetime(TimeSpan.FromMinutes(5)).WithClock(clock).Build();
+            .WithSessionLifetime(TimeSpan.FromMinutes(5)).WithClock(clock)
+            .WithRateLimitMaxWait(TimeSpan.FromSeconds(3)).WithRateLimitRetries(1)
+            .WithRateLimit(290, TimeSpan.FromSeconds(61)).Build();
 
         new ConfigBuilder(original).Build().Should().BeEquivalentTo(original);
     }

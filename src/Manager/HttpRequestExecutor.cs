@@ -242,8 +242,8 @@ internal sealed class HttpRequestExecutor : IDisposable
         if (!IsRetryableMethod(method))
             return false;
 
+        // 429 is not retried here: RequestManager pauses the client and retries only when configured to.
         return statusCode == HttpStatusCode.RequestTimeout
-            || statusCode == (HttpStatusCode)429
             || (int)statusCode >= 500;
     }
 
@@ -261,47 +261,39 @@ internal sealed class HttpRequestExecutor : IDisposable
     private static TimeSpan GetRetryDelay(ExecutorSettings settings, HttpResponseMessage response, int retryCount)
     {
         var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter is not null)
-        {
-            if (retryAfter.Delta is { } delta && delta >= TimeSpan.Zero)
-                return delta;
-
-            // Some servers send an absolute HTTP-date instead of a delta-seconds value.
-            if (retryAfter.Date is { } date)
-            {
-                var delay = date - DateTimeOffset.UtcNow;
-                if (delay > TimeSpan.Zero)
-                    return delay;
-            }
-        }
-
+        if (retryAfter?.Delta is { } delta && delta >= TimeSpan.Zero)
+            return delta;
+        // Some servers send an absolute HTTP-date instead of a delta-seconds value.
+        if (retryAfter?.Date is { } date && date - DateTimeOffset.UtcNow is var delay && delay > TimeSpan.Zero)
+            return delay;
         return GetRetryDelay(settings, retryCount);
     }
 
-    private static int? RetryAfterSeconds(HttpResponseMessage response)
+    // Retry-After is either delta-seconds or an absolute HTTP-date; a date in the past means no wait.
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
     {
         var header = response.Headers.RetryAfter;
         var delay = header?.Delta ?? (header?.Date - DateTimeOffset.UtcNow);
-        return delay.HasValue ? (int?)Math.Min(int.MaxValue, Math.Max(0, Math.Ceiling(delay.Value.TotalSeconds))) : null;
+        return delay.HasValue ? (delay.Value > TimeSpan.Zero ? delay.Value : TimeSpan.Zero) : null;
     }
 
     private static TransportResponse Snapshot(HttpResponseMessage response, string content, IEnumerable<string> setCookieHeaders)
-        => new(response.StatusCode, content, RetryAfterSeconds(response), setCookieHeaders);
+        => new(response.StatusCode, content, RetryAfter(response), setCookieHeaders);
 }
 
 internal sealed class TransportResponse
 {
-    internal TransportResponse(HttpStatusCode statusCode, string content, int? retryAfterSeconds, IEnumerable<string> setCookieHeaders)
+    internal TransportResponse(HttpStatusCode statusCode, string content, TimeSpan? retryAfter, IEnumerable<string> setCookieHeaders)
     {
         StatusCode = statusCode;
         Content = content;
-        RetryAfterSeconds = retryAfterSeconds;
+        RetryAfter = retryAfter;
         SetCookieHeaders = setCookieHeaders.ToArray();
     }
 
     internal HttpStatusCode StatusCode { get; }
     internal string Content { get; }
-    internal int? RetryAfterSeconds { get; }
+    internal TimeSpan? RetryAfter { get; }
     internal IReadOnlyList<string> SetCookieHeaders { get; }
     internal bool IsSuccessStatusCode => (int)StatusCode >= 200 && (int)StatusCode <= 299;
 }

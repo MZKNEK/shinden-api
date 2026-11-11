@@ -17,6 +17,10 @@ public class ConfigBuilder
     private TimeSpan _requestTimeout = Config.DefaultRequestTimeout;
     private int _maxRetries = 2;
     private TimeSpan _retryDelay = Config.DefaultRetryDelay;
+    private TimeSpan _rateLimitMaxWait = TimeSpan.Zero;
+    private int _rateLimitRetries;
+    private int _rateLimitRequests;
+    private TimeSpan _rateLimitWindow = Config.DefaultRateLimitWindow;
 
     /// <summary>Creates an empty builder.</summary>
     public ConfigBuilder() { }
@@ -38,6 +42,10 @@ public class ConfigBuilder
         _requestTimeout = config.RequestTimeout;
         _maxRetries = config.MaxRetries;
         _retryDelay = config.RetryDelay;
+        _rateLimitMaxWait = config.RateLimitMaxWait;
+        _rateLimitRetries = config.RateLimitRetries;
+        _rateLimitRequests = config.RateLimitRequests;
+        _rateLimitWindow = config.RateLimitWindow;
     }
 
     /// <summary>Sets the API base URI.</summary>
@@ -112,6 +120,37 @@ public class ConfigBuilder
     }
 
 
+    /// <summary>
+    /// Lets requests wait up to <paramref name="maxWait"/> for a rate-limit pause or a client-side limiter slot
+    /// instead of failing at once with HTTP 429. Zero (the default) does not wait.
+    /// </summary>
+    public ConfigBuilder WithRateLimitMaxWait(TimeSpan maxWait)
+    {
+        _rateLimitMaxWait = maxWait;
+        return this;
+    }
+
+    /// <summary>
+    /// Sends a GET request again after HTTP 429, up to <paramref name="retries"/> times, once the Retry-After has passed.
+    /// The wait is bounded by the rate-limit wait, or by the request timeout when that is zero. Zero (the default) disables it.
+    /// </summary>
+    public ConfigBuilder WithRateLimitRetries(int retries)
+    {
+        _rateLimitRetries = retries;
+        return this;
+    }
+
+    /// <summary>
+    /// Starts at most <paramref name="requests"/> requests within any <paramref name="per"/>, separately for each API's
+    /// credentials, so the server limit is not reached. Zero requests disables the limit (the default).
+    /// </summary>
+    public ConfigBuilder WithRateLimit(int requests, TimeSpan per)
+    {
+        _rateLimitRequests = requests;
+        _rateLimitWindow = per;
+        return this;
+    }
+
     /// <summary>Configures authentication settings.</summary>
     public ConfigBuilder WithAuth(Func<AuthBuilder, Auth> auth)
     {
@@ -171,6 +210,7 @@ public class ConfigBuilder
             throw new ArgumentOutOfRangeException(nameof(_retryDelay), "The retry delay cannot be negative.");
         if (_auth is null)
             throw new InvalidOperationException("Authentication settings are required.");
+        _ = new RateLimitOptions(_rateLimitMaxWait, _rateLimitRetries, _rateLimitRequests, _rateLimitWindow);
 
         return new Config
         {
@@ -185,6 +225,10 @@ public class ConfigBuilder
             RequestTimeout = _requestTimeout,
             MaxRetries = _maxRetries,
             RetryDelay = _retryDelay,
+            RateLimitMaxWait = _rateLimitMaxWait,
+            RateLimitRetries = _rateLimitRetries,
+            RateLimitRequests = _rateLimitRequests,
+            RateLimitWindow = _rateLimitWindow,
         };
     }
 

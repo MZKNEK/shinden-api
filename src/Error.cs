@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -13,7 +14,9 @@ public enum ErrorType
     Parsing,
     Timeout,
     Authentication,
-    Configuration
+    Configuration,
+    /// <summary>The request was not sent because of a rate-limit pause or the client-side limit; <see cref="Error.RetryAfter"/> says how long to wait.</summary>
+    RateLimit
 }
 
 public class Error
@@ -27,7 +30,10 @@ public class Error
     /// <summary>Machine-readable v1 code, for example api_key_scope or too_fast.</summary>
     public string ApiCode { get; init; }
     public string Field { get; init; }
+    /// <summary>Wait time from Retry-After (seconds or HTTP date) or the v1 retry_after field, rounded up to whole seconds.</summary>
     public int? RetryAfterSeconds { get; init; }
+    /// <summary>Wait time from Retry-After (seconds or HTTP date) or the v1 retry_after field.</summary>
+    public TimeSpan? RetryAfter { get; init; }
     public string RawResponse { get; init; }
     /// <summary>Original exception type for parsing, timeout and transport failures.</summary>
     public string ExceptionType { get; init; }
@@ -55,7 +61,16 @@ public class Error
         Type = type
     };
 
-    internal static Error FromHttpResponse(HttpStatusCode statusCode, string content, int? retryAfterSeconds = null)
+    internal static Error FromRateLimit(TimeSpan retryAfter, string message) => new()
+    {
+        Message = message,
+        Code = 429,
+        Type = ErrorType.RateLimit,
+        RetryAfter = retryAfter,
+        RetryAfterSeconds = CeilingSeconds(retryAfter)
+    };
+
+    internal static Error FromHttpResponse(HttpStatusCode statusCode, string content, TimeSpan? retryAfter = null)
     {
         JObject payload = null;
         try
@@ -64,6 +79,7 @@ public class Error
         }
         catch (JsonException) { /* Empty compatibility responses and non-JSON proxy errors are valid errors too. */ }
 
+        retryAfter ??= BodyRetryAfter(payload);
         return new Error
         {
             Code = (int)statusCode,
@@ -72,12 +88,29 @@ public class Error
                 ?? Text(payload, "detail") ?? Text(payload, "title") ?? content,
             ApiCode = Text(payload, "code") ?? Text(payload, "error_name"),
             Field = Text(payload, "field"),
-            RetryAfterSeconds = retryAfterSeconds ??
-                (int.TryParse(Text(payload, "retry_after"), out var seconds) ? seconds : (int?)null),
+            RetryAfter = retryAfter,
+            RetryAfterSeconds = retryAfter.HasValue ? CeilingSeconds(retryAfter.Value) : null,
             RawResponse = content,
             Type = ErrorType.Http
         };
     }
+
+    private static TimeSpan? BodyRetryAfter(JObject payload)
+    {
+        // JValue.ToString() follows the current culture, so numbers are read without converting to text.
+        double seconds;
+        if (payload?["retry_after"] is not JValue value)
+            return null;
+        if (value.Type is JTokenType.Integer or JTokenType.Float)
+            seconds = (double)value;
+        else if (value.Type is not JTokenType.String
+            || !double.TryParse((string)value, NumberStyles.Float, CultureInfo.InvariantCulture, out seconds))
+            return null;
+        return seconds >= 0 && seconds <= int.MaxValue ? TimeSpan.FromSeconds(seconds) : null;
+    }
+
+    private static int CeilingSeconds(TimeSpan value)
+        => (int)Math.Min(int.MaxValue, Math.Max(0, Math.Ceiling(value.TotalSeconds)));
 
     private static string Text(JObject payload, string name)
         => payload?[name] is JValue value ? value.ToString() : null;
