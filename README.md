@@ -1,6 +1,6 @@
 # Shinden.NET
 
-[![Nuget](https://img.shields.io/nuget/v/Shinden.NET)](https://www.nuget.org/packages/Shinden.NET/) [![codecov](https://img.shields.io/codecov/c/github/MZKNEK/shinden-api?token=KZBU03WLNJ)](https://codecov.io/gh/MZKNEK/shinden-api) [![Build status](https://img.shields.io/appveyor/build/MrZnake/shinden-api)](https://ci.appveyor.com/project/mrznake/shinden-api/branch/master) [![CodeFactor](https://www.codefactor.io/repository/github/mzknek/shinden-api/badge)](https://www.codefactor.io/repository/github/mzknek/shinden-api) [![License](https://img.shields.io/github/license/MZKNEK/shinden-api)](https://github.com/MZKNEK/shinden-api/blob/master/LICENSE)
+[![Nuget](https://img.shields.io/nuget/v/Shinden.NET)](https://www.nuget.org/packages/Shinden.NET/) [![codecov](https://img.shields.io/codecov/c/github/MZKNEK/shinden-api?token=KZBU03WLNJ)](https://codecov.io/gh/MZKNEK/shinden-api) [![CI](https://github.com/MZKNEK/shinden-api/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MZKNEK/shinden-api/actions/workflows/ci.yml) [![CodeFactor](https://www.codefactor.io/repository/github/mzknek/shinden-api/badge)](https://www.codefactor.io/repository/github/mzknek/shinden-api) [![License](https://img.shields.io/github/license/MZKNEK/shinden-api)](https://github.com/MZKNEK/shinden-api/blob/master/LICENSE)
 
 Asynchronous .NET client for the Shinden Go API and the retained PHP API.
 Version 0.7 supports .NET 6, .NET 8 and .NET Standard 2.0.
@@ -368,6 +368,10 @@ dotnet build src/Shinden.NET.csproj
 dotnet build src/DependencyInjection/Shinden.NET.DependencyInjection.csproj
 dotnet test test/Shinden.NET.Test.csproj
 ```
+
+Tests run on net6.0 and net10.0, so both runtimes must be installed; the .NET 10
+SDK builds every target. GitHub Actions runs the same build and tests on each push
+and pull request and uploads coverage to Codecov.
 
 Tests run offline against local handlers and verify request routes and response
 models for compatibility, v1 and PHP endpoints, plus PHP session handling,
